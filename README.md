@@ -51,3 +51,5 @@ npm run build
 - URL target divalidasi server-side dan worker-side untuk mencegah SSRF.
 - Worker memblokir private/internal subresource request dari Playwright.
 - Asset website target tetap mengikuti lisensi pemilik website.
+
+<!-- test2 -->
