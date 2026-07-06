@@ -1,36 +1,53 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Docrivo — DesignMD Generator
 
-## Getting Started
+Docrivo mengubah URL website publik menjadi dokumen `DESIGN.md`, prompt implementasi, screenshot, dan daftar asset publik.
 
-First, run the development server:
+## Stack
+
+- Next.js 16 + React 19 + Tailwind CSS v4
+- InsForge backend (Postgres + Storage)
+- Playwright worker
+- OpenRouter via InsForge AI setup (`openrouter/free` default)
+
+## Setup
+
+```bash
+npm install
+cp .env.example .env.local
+npx @insforge/cli link --project-id 55334c9d-edeb-42d5-b547-7fc50e3d50c3
+npx @insforge/cli db migrations up --all
+npx @insforge/cli storage create-bucket screenshots -y
+npx @insforge/cli ai setup
+npx playwright install chromium
+```
+
+## Run lokal
+
+Terminal 1:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Terminal 2:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npm run worker
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Buka `http://localhost:3000`, submit URL publik, lalu lihat hasil di `/generations/<jobId>`.
 
-## Learn More
+## Checks
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+npm test
+npm run lint
+npm run build
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Notes
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- Admin page dilindungi `ADMIN_TOKEN`.
+- URL target divalidasi server-side dan worker-side untuk mencegah SSRF.
+- Worker memblokir private/internal subresource request dari Playwright.
+- Asset website target tetap mengikuti lisensi pemilik website.
