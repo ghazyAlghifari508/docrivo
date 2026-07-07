@@ -1,15 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { toStaticPreviewHtml } from "./preview-html";
+import { rewritePreviewAssets } from "./preview-html";
 
-describe("toStaticPreviewHtml", () => {
-  it("removes scripts without truncating HTML", () => {
-    const html = '<!doctype html><html><head><link rel="modulepreload" href="/x.js"><link rel="manifest" href="/site.webmanifest"><link rel="stylesheet" href="/x.css"><style>@font-face{font-family:x;src:url(x.woff2)}body{color:red;background:url(https://example.com/bg.svg)}</style><script>throw new Error("boom")</script><script src="/x.js"></script></head><body onload="boom()"><img src="https://example.com/a.svg" srcset="a 1x"><h1>Hi</h1></body></html>';
-    const preview = toStaticPreviewHtml(html);
+describe("rewritePreviewAssets", () => {
+  it("proxies assets/scripts/styles without truncating HTML", () => {
+    const html = '<!doctype html><html><head><base href="/"><link rel="stylesheet" href="/x.css" crossorigin><style>body{background:url(https://example.com/bg.svg)}</style><script src="/x.js" integrity="abc"></script></head><body onload="boom()"><img src="/a.svg" srcset="/a.svg 1x, /b.svg 2x"><h1>Hi</h1></body></html>';
+    const preview = rewritePreviewAssets(html, "https://example.com/docs/");
 
-    expect(preview).not.toMatch(/<script\b/i);
-    expect(preview).not.toMatch(/modulepreload|manifest|stylesheet|@font-face|https:\/\/example\.com|\sonload=|\ssrcset=/i);
-    expect(preview).toContain('src="data:,"');
-    expect(preview).toContain("body{color:red;");
+    expect(preview).not.toMatch(/<base\b|crossorigin|integrity/i);
+    expect(preview).toContain('/api/scrape/asset?url=https%3A%2F%2Fexample.com%2Fx.css');
+    expect(preview).toContain('/api/scrape/asset?url=https%3A%2F%2Fexample.com%2Fx.js');
+    expect(preview).toContain('/api/scrape/asset?url=https%3A%2F%2Fexample.com%2Fa.svg 1x');
+    expect(preview).toContain('url(/api/scrape/asset?url=https%3A%2F%2Fexample.com%2Fbg.svg)');
+    expect(preview).toContain("<script");
     expect(preview).toContain("<h1>Hi</h1>");
     expect(preview).toMatch(/<\/html>$/);
   });

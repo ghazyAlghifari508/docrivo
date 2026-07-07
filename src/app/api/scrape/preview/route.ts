@@ -2,10 +2,15 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { AppError, ERROR_CODES } from "@/lib/errors";
 import { scrapeHtml } from "@/lib/fetch-html";
-import { toStaticPreviewHtml } from "@/lib/preview-html";
+import { rewritePreviewAssets } from "@/lib/preview-html";
 import { rateLimit } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
+
+// Assets are same-origin via the proxy ('self'); inline+eval scripts kept so JS animations run.
+// The iframe sandbox (no allow-same-origin) is what actually isolates this untrusted HTML.
+const PREVIEW_CSP =
+  "default-src 'self' data: blob:; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:; connect-src 'self' data: blob:; frame-src 'self' data: blob:; base-uri 'none'; form-action 'none'; object-src 'none'; frame-ancestors 'self'";
 
 const Body = z.object({ url: z.string().min(1) });
 
@@ -28,12 +33,12 @@ async function render(rawUrl: string, req: Request) {
     const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "local";
     if (!(await rateLimit(`scrape-preview:${ip}`))) return htmlError(ERROR_CODES.RATE_LIMITED, 429);
 
-    const { html } = await scrapeHtml(rawUrl);
+    const { html, sourceUrl } = await scrapeHtml(rawUrl);
 
-    return new NextResponse(toStaticPreviewHtml(html), {
+    return new NextResponse(rewritePreviewAssets(html, sourceUrl), {
       headers: {
         "Content-Type": "text/html; charset=utf-8",
-        "Content-Security-Policy": "default-src 'none'; style-src https: 'unsafe-inline'; img-src https: data: blob:; media-src https: data: blob:; font-src https: data:; script-src 'none'; connect-src 'none'; frame-src 'none'; child-src 'none'; base-uri https:; form-action 'none'; object-src 'none'; frame-ancestors 'self'",
+        "Content-Security-Policy": PREVIEW_CSP,
         "Referrer-Policy": "no-referrer",
         "X-Content-Type-Options": "nosniff",
       },

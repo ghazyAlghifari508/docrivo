@@ -4,7 +4,60 @@ import { AppError } from "./errors";
 import { validateUrl } from "./url-validator";
 
 const MAX_HTML_BYTES = 5_000_000;
+const MAX_ASSET_BYTES = 15_000_000;
 const FETCH_TIMEOUT_MS = 25_000;
+
+/** SSRF-safe binary fetch for the preview asset proxy: pins to resolved IP, re-validates redirects, caps size. */
+export async function fetchAsset(
+  rawUrl: string,
+  redirects = 0,
+): Promise<{ body: Buffer; status: number; contentType: string }> {
+  if (redirects > 3) throw new AppError("WEBSITE_BLOCKED", "Redirect terlalu banyak.");
+  const { url, ip } = await validateUrl(rawUrl);
+  const isHttps = url.protocol === "https:";
+  const client = isHttps ? https : http;
+
+  return new Promise((resolve, reject) => {
+    const req = client.request(
+      {
+        protocol: url.protocol,
+        hostname: ip,
+        port: url.port || (isHttps ? 443 : 80),
+        path: `${url.pathname}${url.search}`,
+        method: "GET",
+        timeout: FETCH_TIMEOUT_MS,
+        headers: { Host: url.host, "User-Agent": "DocrivoBot/1.0", Accept: "*/*" },
+        servername: url.hostname,
+      },
+      (res) => {
+        const status = res.statusCode ?? 0;
+        const location = res.headers.location;
+        if (location && status >= 300 && status < 400) {
+          res.resume();
+          fetchAsset(new URL(location, url.href).href, redirects + 1).then(resolve, reject);
+          return;
+        }
+        const chunks: Buffer[] = [];
+        let size = 0;
+        res.on("data", (chunk: Buffer) => {
+          size += chunk.length;
+          if (size > MAX_ASSET_BYTES) req.destroy(new AppError("NO_ANALYZABLE_CONTENT", "Asset terlalu besar."));
+          else chunks.push(chunk);
+        });
+        res.on("end", () =>
+          resolve({
+            body: Buffer.concat(chunks),
+            status,
+            contentType: res.headers["content-type"] ?? "application/octet-stream",
+          }),
+        );
+      },
+    );
+    req.on("timeout", () => req.destroy(new AppError("FETCH_TIMEOUT")));
+    req.on("error", reject);
+    req.end();
+  });
+}
 
 export async function scrapeHtml(rawUrl: string) {
   const { normalized } = await validateUrl(rawUrl);
