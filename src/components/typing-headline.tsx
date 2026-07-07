@@ -2,49 +2,64 @@
 
 import { useEffect, useState } from "react";
 
-const SEGMENTS = [
-  { text: "Ubah website apa pun jadi panduan yang " },
-  { text: "actually", emph: true },
-  { text: " bisa dieksekusi." },
-];
-const FULL = SEGMENTS.map((s) => s.text).join("");
-const H1 =
-  "text-heading-lg font-semibold leading-heading-lg tracking-heading-lg md:text-display md:leading-display md:tracking-display";
+// Rotating typewriter: types a phrase, pauses, deletes it, then types the next -
+// looping forever. The rotating tail is set in Fraunces italic (the brand's
+// emphasis signature). Respects reduced-motion by showing the first phrase static.
+const PHRASES = ["desain AI.", "prompt visual.", "aturan UI.", "vibe coding."];
+const TYPE_MS = 55;
+const DELETE_MS = 32;
+const HOLD_MS = 1400;
+
+const reduceMotion = () =>
+  typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 export function TypingHeadline() {
-  const [n, setN] = useState(0);
-  const done = n >= FULL.length;
+  const reduced = reduceMotion();
+  const [text, setText] = useState(PHRASES[0]);
 
   useEffect(() => {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const id = setInterval(() => {
-      setN((current) => {
-        if (current >= FULL.length) {
-          clearInterval(id);
-          return current;
+    if (reduced) return;
+
+    let phrase = 0;
+    let char = PHRASES[0].length;
+    let deleting = true;
+    let timer: ReturnType<typeof setTimeout>;
+
+    const tick = () => {
+      const current = PHRASES[phrase];
+      if (!deleting) {
+        char += 1;
+        setText(current.slice(0, char));
+        if (char === current.length) {
+          deleting = true;
+          timer = setTimeout(tick, HOLD_MS);
+          return;
         }
-        return current + 1;
-      });
-    }, 42);
-    return () => clearInterval(id);
-  }, []);
+        timer = setTimeout(tick, TYPE_MS);
+      } else {
+        char -= 1;
+        setText(current.slice(0, char));
+        if (char === 0) {
+          deleting = false;
+          phrase = (phrase + 1) % PHRASES.length;
+          timer = setTimeout(tick, TYPE_MS);
+          return;
+        }
+        timer = setTimeout(tick, DELETE_MS);
+      }
+    };
+
+    timer = setTimeout(tick, HOLD_MS);
+    return () => clearTimeout(timer);
+  }, [reduced]);
 
   return (
-    <div className="grid max-w-2xl">
-      {/* Invisible full copy reserves final height → no layout shift while typing. */}
-      <p aria-hidden className={`invisible col-start-1 row-start-1 ${H1}`}>
-        {SEGMENTS.map((s, i) => (s.emph ? <span key={i} className="emph">{s.text}</span> : s.text))}
-      </p>
-
-      <h1 aria-label={FULL} className={`col-start-1 row-start-1 ${H1}`}>
-        {SEGMENTS.map((s, i) => {
-          const start = SEGMENTS.slice(0, i).reduce((sum, segment) => sum + segment.text.length, 0);
-          const shown = s.text.slice(0, Math.max(0, n - start));
-          if (!shown) return null;
-          return s.emph ? <span key={i} className="emph">{shown}</span> : <span key={i}>{shown}</span>;
-        })}
-        <span className={`type-caret ${done ? "type-caret-done" : ""}`} aria-hidden />
-      </h1>
-    </div>
+    <h1 className="mx-auto whitespace-nowrap text-center text-[clamp(20px,4vw,56px)] font-semibold leading-display tracking-display">
+      Ubah website jadi{" "}
+      <span className="inline whitespace-nowrap align-baseline">
+        <span className="emph">{text}</span>
+        {!reduced && <span className="type-caret" aria-hidden />}
+      </span>
+    </h1>
   );
 }

@@ -23,10 +23,16 @@ export async function POST(
     return NextResponse.json({ jobId: job.id, status: job.status, retryOf: job.retry_of });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Retry gagal.";
-    const status = message.includes("job not found") ? 404 : 409;
+    if (message.includes("job not found") || message.includes("not retryable")) {
+      return NextResponse.json(
+        { error: { code: "INVALID_RETRY", message: "Job ini belum bisa di-retry." } },
+        { status: message.includes("job not found") ? 404 : 409 },
+      );
+    }
+    console.error("[api] retry generation failed", err);
     return NextResponse.json(
-      { error: { code: "INVALID_RETRY", message: "Job ini belum bisa di-retry." } },
-      { status },
+      { error: { code: "STORAGE_FAILED", message: ERROR_CODES.STORAGE_FAILED } },
+      { status: 500 },
     );
   }
 }

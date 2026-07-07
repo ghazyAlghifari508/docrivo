@@ -1,7 +1,5 @@
-import Link from "next/link";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
-import { ArrowUpRight } from "@phosphor-icons/react/dist/ssr";
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { insforge } from "@/lib/insforge";
@@ -24,7 +22,7 @@ const LABEL: Record<string, string> = {
   crawling: "Membaca halaman",
   capturing: "Melihat tampilan",
   extracting: "Merangkum gaya",
-  generating: "Menyusun panduan",
+  generating: "Menyusun DESIGN.md",
 };
 
 export default async function AdminPage() {
@@ -47,15 +45,15 @@ export default async function AdminPage() {
     <>
       <SiteHeader surface="cream" />
 
-      <main className="bg-cream">
+      <main id="main" className="bg-cream">
         <div className="page-shell py-14">
           <div className="flex flex-col gap-2">
             <span className="text-caption font-semibold uppercase tracking-[0.08em] text-muted-gray">Admin</span>
             <h1 className="text-heading-lg font-semibold leading-heading-lg tracking-heading-lg">
-              Daftar <span className="emph">panduan</span>.
+              Daftar <span className="emph">DESIGN.md</span>.
             </h1>
             <p className="max-w-md text-body-sm leading-6 text-muted">
-              Pantau panduan yang sedang dibuat, selesai, atau perlu dicoba ulang.
+              Pantau DESIGN.md yang sedang dibuat, selesai, atau perlu dicoba ulang.
             </p>
           </div>
 
@@ -80,7 +78,7 @@ export default async function AdminPage() {
                   {jobs.length === 0 ? (
                     <tr>
                       <td colSpan={4} className="p-10 text-center text-muted-gray">
-                        Belum ada panduan.
+                        Belum ada DESIGN.md.
                       </td>
                     </tr>
                   ) : (
@@ -89,17 +87,11 @@ export default async function AdminPage() {
                         <td className="p-4">
                           <StatusBadge status={j.status} />
                         </td>
-                        <td className="max-w-[420px] p-4">
-                          <Link
-                            href={`/generations/${j.id}`}
-                            className="inline-flex items-center gap-1.5 break-all font-medium link-underline"
-                          >
-                            {j.source_url}
-                            <ArrowUpRight size={14} weight="bold" className="shrink-0 text-muted-gray" />
-                          </Link>
+                        <td className="max-w-[420px] break-all p-4 font-medium">
+                          {j.source_url}
                         </td>
                         <td className="p-4 text-right tabular-nums">{j.pages_analyzed}</td>
-                        <td className="p-4 text-muted-gray">{j.error_code ? "Perlu dicoba lagi" : "—"}</td>
+                        <td className="p-4 text-muted-gray">{j.error_code ? "Perlu dicoba lagi" : "-"}</td>
                       </tr>
                     ))
                   )}

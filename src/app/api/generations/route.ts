@@ -52,9 +52,16 @@ export async function POST(req: Request) {
         { status: err.code === "INVALID_URL" ? 400 : 422 },
       );
     }
+    if (err instanceof z.ZodError || err instanceof SyntaxError) {
+      return NextResponse.json(
+        { error: { code: "INVALID_URL", message: ERROR_CODES.INVALID_URL } },
+        { status: 400 },
+      );
+    }
+    console.error("[api] create generation failed", err);
     return NextResponse.json(
-      { error: { code: "INVALID_URL", message: ERROR_CODES.INVALID_URL } },
-      { status: 400 },
+      { error: { code: "STORAGE_FAILED", message: ERROR_CODES.STORAGE_FAILED } },
+      { status: 500 },
     );
   }
 }

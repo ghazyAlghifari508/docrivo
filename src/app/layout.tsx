@@ -18,8 +18,8 @@ const fraunces = Fraunces({
 });
 
 export const metadata: Metadata = {
-  title: "Docrivo — Website jadi panduan desain",
-  description: "Ubah website referensi jadi panduan desain yang jelas, rapi, dan mudah dipakai tim.",
+  title: "Docrivo - Website jadi DESIGN.md untuk AI coding",
+  description: "Ubah website referensi jadi DESIGN.md yang membuat AI coding assistant mengikuti style yang kamu mau.",
 };
 
 export default function RootLayout({
@@ -29,7 +29,8 @@ export default function RootLayout({
 }>) {
   return (
     <html
-      lang="en"
+      lang="id"
+      data-scroll-behavior="smooth"
       className={`${geistSans.variable} ${fraunces.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">{children}</body>

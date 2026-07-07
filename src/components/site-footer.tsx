@@ -1,17 +1,16 @@
 import Link from "next/link";
 
 const PRODUCT = [
-  ["Cara kerja", "/#how"],
-  ["Hasil", "/#output"],
-  ["Untuk siapa", "/#fit"],
-  ["FAQ", "/#faq"],
-  ["Buat panduan", "/#generate"],
+  ["Buat DESIGN.md", "/"],
+  ["About", "/about"],
+  ["Bantuan", "/bantuan"],
+  ["FAQ", "/faq"],
 ];
 
 const RESOURCE = [
-  ["Panduan desain", "/#output"],
-  ["Cara kerja", "/#how"],
-  ["Mulai sekarang", "/#generate"],
+  ["Cara kerja", "/bantuan"],
+  ["Pertanyaan umum", "/faq"],
+  ["Tentang Docrivo", "/about"],
 ];
 
 export function SiteFooter() {
@@ -22,12 +21,8 @@ export function SiteFooter() {
           <div className="max-w-sm">
             <span className="text-body font-semibold tracking-[-0.02em]">Docrivo</span>
             <p className="mt-4 text-body-sm leading-7 text-muted">
-              Ubah website referensi jadi panduan desain yang jelas, rapi, dan mudah dipakai tim.
+              Ubah website referensi jadi DESIGN.md yang bisa ditempel ke AI coding assistant biar hasil UI-nya konsisten.
             </p>
-            <span className="mt-6 inline-flex items-center gap-2 rounded-pills border border-mint-edge bg-mint-wash px-3 py-1.5 text-caption font-medium text-ink">
-              <span className="size-2 rounded-full bg-mint-edge" />
-              Siap bantu bikin panduan
-            </span>
           </div>
 
           <FooterCol title="Produk" links={PRODUCT} />
@@ -35,10 +30,10 @@ export function SiteFooter() {
         </div>
 
         <div className="mt-16 flex flex-col gap-3 border-t border-rule pt-6 text-caption text-muted-gray sm:flex-row sm:items-center sm:justify-between">
-          <span>© {new Date().getFullYear()} Docrivo. Dibuat untuk builder.</span>
+          <span>© {new Date().getFullYear()} Docrivo. Dibuat untuk vibecoder.</span>
           <div className="flex gap-6">
-            <Link href="/#faq" className="link-underline">Ketentuan</Link>
-            <Link href="/#faq" className="link-underline">Privasi</Link>
+            <Link href="/faq" className="link-underline">FAQ</Link>
+            <Link href="/bantuan" className="link-underline">Bantuan</Link>
           </div>
         </div>
       </div>

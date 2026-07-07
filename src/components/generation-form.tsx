@@ -1,33 +1,44 @@
 "use client";
 
 import { ArrowRight, GlobeHemisphereWest, Warning } from "@phosphor-icons/react";
-import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 
-export function GenerationForm({ tone = "light" }: { tone?: "light" | "dark" }) {
-  const router = useRouter();
+export function GenerationForm({
+  tone = "light",
+  onCreated,
+}: {
+  tone?: "light" | "dark";
+  onCreated: (jobId: string) => void;
+}) {
   const [url, setUrl] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const dark = tone === "dark";
+  const helperId = "url-help";
+  const errorId = "url-error";
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (!url.trim()) return setError("Link wajib diisi.");
     setLoading(true);
     setError("");
-    const res = await fetch("/api/generations", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url }),
-    });
-    const json = await res.json();
-    if (!res.ok) {
+    try {
+      const res = await fetch("/api/generations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setError("DESIGN.md gagal dibuat. Pastikan link publik bisa dibuka, lalu coba lagi.");
+        return;
+      }
+      onCreated(json.jobId);
+    } catch {
+      setError("Jaringan bermasalah. Coba lagi sebentar lagi.");
+    } finally {
       setLoading(false);
-      setError("Panduan gagal dibuat. Pastikan link bisa dibuka, lalu coba lagi.");
-      return;
     }
-    router.push(`/generations/${json.jobId}`);
   }
 
   return (
@@ -40,7 +51,7 @@ export function GenerationForm({ tone = "light" }: { tone?: "light" | "dark" }) 
         >
           <GlobeHemisphereWest size={20} weight="regular" className="shrink-0 text-muted" aria-hidden="true" />
           <label htmlFor="url" className="sr-only">
-            Link website
+Website referensi
           </label>
           <input
             id="url"
@@ -49,8 +60,11 @@ export function GenerationForm({ tone = "light" }: { tone?: "light" | "dark" }) 
             autoComplete="url"
             value={url}
             onChange={(e) => setUrl(e.target.value)}
-            placeholder="https://brainfishai.com"
+            placeholder="https://example.com"
             disabled={loading}
+            required
+            aria-invalid={!!error}
+            aria-describedby={error ? errorId : helperId}
             className="h-full min-w-0 flex-1 bg-transparent text-body-sm text-ink outline-none placeholder:text-muted-gray disabled:opacity-60"
           />
         </div>
@@ -59,20 +73,20 @@ export function GenerationForm({ tone = "light" }: { tone?: "light" | "dark" }) 
           disabled={loading || !url.trim()}
           className="pressable inline-flex h-14 items-center justify-center gap-2 rounded-buttons border border-ink bg-lime-sprint px-6 text-body-sm font-medium text-ink shadow-hard disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {loading ? "Membuat panduan…" : "Buat panduan"}
+          {loading ? "Menyusun DESIGN.md…" : "Buat DESIGN.md"}
           {!loading && <ArrowRight size={18} weight="bold" aria-hidden="true" />}
         </button>
       </div>
 
       <div className="mt-3 flex items-center gap-2">
         {error ? (
-          <p role="alert" className="inline-flex items-center gap-1.5 text-caption font-medium text-red-700">
+          <p id={errorId} role="alert" className="inline-flex items-center gap-1.5 text-caption font-medium text-red-700">
             <Warning size={15} weight="fill" aria-hidden="true" />
             {error}
           </p>
         ) : (
-          <p className={`text-caption ${dark ? "text-paper-white/60" : "text-muted-gray"}`}>
-            Tempel link website yang bisa dibuka umum. Proses biasanya selesai dalam beberapa menit.
+          <p id={helperId} className={`text-caption ${dark ? "text-paper-white/60" : "text-muted-gray"}`}>
+            Tempel website publik yang style-nya ingin kamu jadikan instruksi untuk AI coding assistant.
           </p>
         )}
       </div>

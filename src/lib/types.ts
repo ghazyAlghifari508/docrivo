@@ -55,6 +55,25 @@ export interface DesignExtraction {
   typography: FontToken[];
   layout_patterns: string[];
   components: string[];
+  tokens?: {
+    spacing: string[];
+    radii: string[];
+    shadows: string[];
+    maxWidths: string[];
+    lineHeights: string[];
+    letterSpacing: string[];
+    cssVariables: Record<string, string>;
+  };
+  component_details?: Array<{
+    type: string;
+    text?: string;
+    colors?: string[];
+    typography?: string;
+    spacing?: string;
+    shape?: string;
+  }>;
+  surfaces?: Array<{ selector: string; background: string; color: string }>;
+  imagery?: { imageCount: number; examples: string[] };
   metadata: {
     title?: string;
     description?: string;

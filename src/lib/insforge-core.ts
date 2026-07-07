@@ -1,5 +1,7 @@
 type Query = Record<string, string | number | boolean | undefined>;
 
+const TIMEOUT_MS = 30_000;
+
 function baseUrl() {
   return process.env.INSFORGE_URL!;
 }
@@ -17,8 +19,10 @@ function url(path: string, query?: Query) {
 }
 
 async function request<T>(path: string, init: RequestInit = {}, query?: Query): Promise<T> {
-  const res = await fetch(url(path, query), {
+  const target = url(path, query);
+  const res = await fetch(target, {
     ...init,
+    signal: init.signal ?? AbortSignal.timeout(TIMEOUT_MS),
     headers: {
       Authorization: `Bearer ${apiKey()}`,
       apikey: apiKey(),
@@ -27,7 +31,7 @@ async function request<T>(path: string, init: RequestInit = {}, query?: Query): 
       ...(init.headers ?? {}),
     },
   });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) throw new Error(`${init.method ?? "GET"} ${target.pathname} failed ${res.status}: ${await res.text()}`);
   if (res.status === 204) return null as T;
   return res.json() as Promise<T>;
 }
@@ -81,20 +85,26 @@ export const insforge = {
     if (strategy.method === "direct") {
       const form = new FormData();
       form.append("file", blob);
-      const res = await fetch(url(`/api/storage/buckets/screenshots/objects/${encodeURIComponent(key)}`), {
+      const target = url(`/api/storage/buckets/screenshots/objects/${encodeURIComponent(key)}`);
+      const res = await fetch(target, {
         method: "PUT",
+        signal: AbortSignal.timeout(TIMEOUT_MS),
         headers: { Authorization: `Bearer ${apiKey()}`, apikey: apiKey() },
         body: form,
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw new Error(`PUT ${target.pathname} failed ${res.status}: ${await res.text()}`);
       return (await res.json()) as { url?: string; key?: string };
     }
 
     const form = new FormData();
     for (const [k, v] of Object.entries(strategy.fields ?? {})) form.append(k, v);
     form.append("file", blob);
-    const res = await fetch(strategy.uploadUrl!, { method: "POST", body: form });
-    if (!res.ok) throw new Error(await res.text());
+    const res = await fetch(strategy.uploadUrl!, {
+      method: "POST",
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+      body: form,
+    });
+    if (!res.ok) throw new Error(`POST upload strategy failed ${res.status}: ${await res.text()}`);
     return {
       key: strategy.key,
       url: `${baseUrl()}/api/storage/buckets/screenshots/objects/${encodeURIComponent(strategy.key!)}`,

@@ -2,10 +2,10 @@ import Link from "next/link";
 import { ArrowRight } from "@phosphor-icons/react/dist/ssr";
 
 const NAV = [
-  ["Cara kerja", "/#how"],
-  ["Hasil", "/#output"],
-  ["Untuk siapa", "/#fit"],
-  ["FAQ", "/#faq"],
+  ["Home", "/"],
+  ["About", "/about"],
+  ["Bantuan", "/bantuan"],
+  ["FAQ", "/faq"],
 ];
 
 export function SiteHeader({ surface = "paper" }: { surface?: "paper" | "cream" | "depth" }) {
@@ -15,6 +15,9 @@ export function SiteHeader({ surface = "paper" }: { surface?: "paper" | "cream" 
 
   return (
     <header className={`sticky top-0 z-40 border-b ${bg} ${border}`}>
+      <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-buttons focus:border focus:border-ink focus:bg-lime-sprint focus:px-4 focus:py-2 focus:text-body-sm focus:font-medium focus:text-ink">
+        Lewati ke konten utama
+      </a>
       <div className="page-shell flex h-[67px] items-center justify-between gap-6">
         <Link href="/" className="flex shrink-0 items-center gap-2.5 text-body font-semibold tracking-[-0.02em]">
           <Wordmark dark={dark} />
@@ -31,10 +34,10 @@ export function SiteHeader({ surface = "paper" }: { surface?: "paper" | "cream" 
 
         <div className="flex shrink-0 items-center gap-4">
           <Link
-            href="/#generate"
+            href="/"
             className="pressable inline-flex h-10 items-center gap-2 rounded-buttons border border-ink bg-lime-sprint px-4 text-body-sm font-medium text-ink shadow-hard"
           >
-            Buat panduan
+            Buat DESIGN.md
             <ArrowRight size={16} weight="bold" aria-hidden="true" />
           </Link>
         </div>

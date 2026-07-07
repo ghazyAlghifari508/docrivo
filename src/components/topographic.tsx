@@ -1,4 +1,4 @@
-// Signature contour-line watermark from docs/DESIGN.md — runs beneath sections as paper texture.
+// Signature contour-line watermark from docs/DESIGN.md - runs beneath sections as paper texture.
 // SVG so it scales cleanly and themes via a single stroke color.
 
 export function Topographic({
@@ -18,7 +18,7 @@ export function Topographic({
       fill="none"
     >
       <g stroke={stroke} strokeWidth="1.25">
-        {/* Nested closed contours — a topographic map read as texture, not data. */}
+        {/* Nested closed contours - a topographic map read as texture, not data. */}
         {CONTOURS.map((d, i) => (
           <path key={i} d={d} />
         ))}

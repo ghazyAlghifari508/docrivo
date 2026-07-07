@@ -1,4 +1,4 @@
-// App error codes — mirrors PRD §13. User-facing messages in Bahasa Indonesia.
+// App error codes - mirrors PRD §13. User-facing messages in Bahasa Indonesia.
 export const ERROR_CODES = {
   INVALID_URL: "URL tidak valid. Masukkan URL website yang benar.",
   PRIVATE_URL_BLOCKED: "URL tidak dapat diproses karena alasan keamanan.",
@@ -6,7 +6,7 @@ export const ERROR_CODES = {
   WEBSITE_BLOCKED: "Website tidak dapat diakses oleh sistem.",
   NO_ANALYZABLE_CONTENT:
     "Sistem tidak menemukan konten yang cukup untuk dianalisis.",
-  AI_GENERATION_FAILED: "Generate dokumen gagal. Coba ulangi proses.",
+  AI_GENERATION_FAILED: "Generate DESIGN.md gagal. Coba ulangi proses.",
   STORAGE_FAILED: "Terjadi kendala saat menyimpan hasil.",
   RATE_LIMITED: "Terlalu banyak percobaan. Coba lagi beberapa saat.",
 } as const;
@@ -17,8 +17,9 @@ export class AppError extends Error {
   constructor(
     public code: ErrorCode,
     message?: string,
+    options?: ErrorOptions,
   ) {
-    super(message ?? ERROR_CODES[code]);
+    super(message ?? ERROR_CODES[code], options);
     this.name = "AppError";
   }
 }

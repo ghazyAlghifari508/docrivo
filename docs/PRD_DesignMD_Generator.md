@@ -193,7 +193,7 @@ Validasi:
 Output:
 - Job ID
 - Status awal: `queued`
-- Redirect ke halaman progress/result
+- Progress/result tampil langsung di halaman home
 
 ---
 
@@ -381,7 +381,7 @@ Prompt minimal berisi:
 
 ## 7.9 Result Preview
 
-Halaman result menampilkan:
+Area hasil di halaman home menampilkan:
 
 1. Ringkasan job
 2. URL sumber
@@ -472,7 +472,7 @@ sequenceDiagram
     API->>DB: Buat job status queued
     API->>Queue: Kirim job ke queue
     API-->>UI: Return job_id
-    UI-->>User: Redirect ke halaman progress
+    UI-->>User: Tampilkan progress di halaman home
 
     Queue->>Worker: Proses job
     Worker->>DB: Update status crawling
@@ -515,7 +515,7 @@ User dapat retry atau memasukkan URL lain
 ## 8.3 Flow Download Hasil
 
 ```txt
-User membuka halaman result
+User melihat hasil di halaman home
 ↓
 User klik Download DESIGN.md
 ↓
@@ -532,16 +532,12 @@ Halaman yang dibutuhkan:
 
 | Route | Deskripsi |
 |---|---|
-| `/` | Landing/input utama |
-| `/generate` | Form input URL |
-| `/generations/[id]` | Progress dan result page |
-| `/generations/[id]/assets` | Detail asset hasil ekstraksi, opsional |
-| `/history` | Riwayat generate, jika tersedia |
+| `/` | Landing/input utama, progress, dan hasil generate |
 | `/admin` | Monitoring internal, opsional |
 | `/api/generations` | Endpoint create job |
-| `/api/generations/[id]` | Endpoint detail job |
-| `/api/generations/[id]/download` | Endpoint download markdown |
-| `/api/generations/[id]/retry` | Endpoint retry job |
+| `/api/generations/[id]` | Endpoint detail job untuk polling di home |
+| `/api/generations/[id]/download` | Endpoint download markdown dari home |
+| `/api/generations/[id]/retry` | Endpoint retry job dari home |
 
 ---
 
@@ -823,7 +819,7 @@ Target MVP:
 3. Proses generate berjalan async, bukan menunggu request HTTP panjang.
 4. Job MVP ideal selesai dalam 1–3 menit untuk maksimal 5 halaman, tergantung website target dan AI provider.
 5. Polling status maksimal setiap 2–5 detik.
-6. Halaman result dapat membuka markdown panjang tanpa lag signifikan.
+6. Area hasil di halaman home dapat membuka markdown panjang tanpa lag signifikan.
 7. Sistem dapat menangani minimal 10 job bersamaan pada tahap MVP dengan queue.
 
 ---

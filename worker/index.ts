@@ -1,10 +1,9 @@
 import { config } from "dotenv";
 config({ path: ".env.local" });
-import http from "node:http";
-import https from "node:https";
 import { chromium, type Page } from "playwright";
 import { generateDesign } from "../src/lib/ai-provider";
 import { AppError } from "../src/lib/errors";
+import { fetchHtml, inlineStyles } from "../src/lib/fetch-html";
 import { insforge } from "../src/lib/insforge-core";
 import { validateUrl } from "../src/lib/url-validator";
 import type { DesignExtraction, GenerationJob } from "../src/lib/types";
@@ -78,6 +77,17 @@ async function crawl(browser: Awaited<ReturnType<typeof chromium.launch>>, job: 
   const allColors = new Set<string>();
   const allFonts = new Set<string>();
   const components = new Set<string>();
+  const spacing = new Set<string>();
+  const radii = new Set<string>();
+  const shadows = new Set<string>();
+  const maxWidths = new Set<string>();
+  const lineHeights = new Set<string>();
+  const letterSpacing = new Set<string>();
+  const cssVariables: Record<string, string> = {};
+  const componentDetails: DesignExtraction["component_details"] = [];
+  const surfaces: DesignExtraction["surfaces"] = [];
+  const imageExamples = new Set<string>();
+  let imageCount = 0;
   let title = "";
   let description = "";
 
@@ -94,8 +104,10 @@ async function crawl(browser: Awaited<ReturnType<typeof chromium.launch>>, job: 
     await context.route("**/*", (route) => route.abort());
     const page = await context.newPage();
     try {
-      const fetched = await safeFetch(url);
-      await page.setContent(fetched.html, { waitUntil: "domcontentloaded", timeout: 25_000 });
+      const fetched = await fetchHtml(url);
+      const html = await inlineStyles(fetched.html, url);
+      await page.setContent(html, { waitUntil: "domcontentloaded", timeout: 25_000 });
+      await page.evaluate("globalThis.__name = (fn) => fn");
       const pageTitle = await page.title();
       title ||= pageTitle;
       description ||= await page.locator('meta[name="description"]').getAttribute("content").catch(() => "") ?? "";
@@ -107,12 +119,35 @@ async function crawl(browser: Awaited<ReturnType<typeof chromium.launch>>, job: 
         key,
         new Blob([new Uint8Array(screenshot)], { type: "image/png" }),
       );
-      const screenshotUrl = uploaded?.url ?? null;
+      if (!uploaded?.url || !uploaded?.key) throw new AppError("STORAGE_FAILED", "Upload screenshot gagal.");
+      const screenshotUrl = uploaded.url;
 
-      const { colors, fonts, links, foundComponents, foundAssets, theme } = await extractPage(page, base.hostname, url);
+      const {
+        colors,
+        fonts,
+        links,
+        foundComponents,
+        foundAssets,
+        theme,
+        tokens,
+        componentDetails: pageComponents,
+        surfaces: pageSurfaces,
+        imagery,
+      } = await extractPage(page, base.hostname, url);
       colors.forEach((c) => allColors.add(c));
       fonts.forEach((f) => allFonts.add(f));
       foundComponents.forEach((c) => components.add(c));
+      tokens.spacing.forEach((v) => spacing.add(v));
+      tokens.radii.forEach((v) => radii.add(v));
+      tokens.shadows.forEach((v) => shadows.add(v));
+      tokens.maxWidths.forEach((v) => maxWidths.add(v));
+      tokens.lineHeights.forEach((v) => lineHeights.add(v));
+      tokens.letterSpacing.forEach((v) => letterSpacing.add(v));
+      Object.assign(cssVariables, tokens.cssVariables);
+      componentDetails.push(...pageComponents);
+      surfaces.push(...pageSurfaces);
+      imageCount += imagery.imageCount;
+      imagery.examples.forEach((src) => imageExamples.add(src));
       if (item.depth === 0) {
         links
           .filter((link) => !seen.has(link))
@@ -150,8 +185,9 @@ async function crawl(browser: Awaited<ReturnType<typeof chromium.launch>>, job: 
       await setStatus(job.id, "extracting", { pages_analyzed: pages.length });
       void theme;
     } catch (err) {
+      if (isPersistenceError(err)) throw err;
       failed.push(url);
-      await log(job.id, "warn", "page_failed", url, String(err));
+      await log(job.id, "warn", "page_failed", url, errorDetails(err));
     } finally {
       await context.close();
     }
@@ -164,6 +200,18 @@ async function crawl(browser: Awaited<ReturnType<typeof chromium.launch>>, job: 
     typography: [...allFonts].slice(0, 8).map((family) => ({ family })),
     layout_patterns: inferLayoutPatterns([...components]),
     components: [...components],
+    tokens: {
+      spacing: [...spacing].slice(0, 40),
+      radii: [...radii].slice(0, 24),
+      shadows: [...shadows].slice(0, 24),
+      maxWidths: [...maxWidths].slice(0, 24),
+      lineHeights: [...lineHeights].slice(0, 24),
+      letterSpacing: [...letterSpacing].slice(0, 24),
+      cssVariables: Object.fromEntries(Object.entries(cssVariables).slice(0, 80)),
+    },
+    component_details: componentDetails.slice(0, 60),
+    surfaces: surfaces.slice(0, 30),
+    imagery: { imageCount, examples: [...imageExamples].slice(0, 20) },
     metadata: {
       title,
       description,
@@ -177,61 +225,64 @@ async function crawl(browser: Awaited<ReturnType<typeof chromium.launch>>, job: 
   return { extraction, pagesAnalyzed: pages.length };
 }
 
-async function safeFetch(rawUrl: string, redirects = 0): Promise<{ html: string; status: number }> {
-  if (redirects > 3) throw new AppError("WEBSITE_BLOCKED", "Redirect terlalu banyak.");
-  const { url, ip } = await validateUrl(rawUrl);
-  const isHttps = url.protocol === "https:";
-  const client = isHttps ? https : http;
-
-  return new Promise((resolve, reject) => {
-    const req = client.request(
-      {
-        protocol: url.protocol,
-        hostname: ip,
-        port: url.port || (isHttps ? 443 : 80),
-        path: `${url.pathname}${url.search}`,
-        method: "GET",
-        timeout: 25_000,
-        headers: { Host: url.host, "User-Agent": "DocrivoBot/1.0" },
-        servername: url.hostname,
-      },
-      (res) => {
-        const status = res.statusCode ?? 0;
-        const location = res.headers.location;
-        if (location && status >= 300 && status < 400) {
-          res.resume();
-          safeFetch(new URL(location, url.href).href, redirects + 1).then(resolve, reject);
-          return;
-        }
-        const chunks: Buffer[] = [];
-        let size = 0;
-        res.on("data", (chunk: Buffer) => {
-          size += chunk.length;
-          if (size > 2_000_000) req.destroy(new AppError("NO_ANALYZABLE_CONTENT", "HTML terlalu besar."));
-          else chunks.push(chunk);
-        });
-        res.on("end", () => resolve({ html: Buffer.concat(chunks).toString("utf8"), status }));
-      },
-    );
-    req.on("timeout", () => req.destroy(new AppError("FETCH_TIMEOUT")));
-    req.on("error", reject);
-    req.end();
-  });
-}
-
 async function extractPage(page: Page, domain: string, pageUrl: string) {
   return page.evaluate(({ domainArg, pageUrlArg }) => {
-    const top = Array.from(document.querySelectorAll("body *")).slice(0, 250);
+    const top = Array.from(document.querySelectorAll<HTMLElement>("body *")).slice(0, 600);
     const colors = new Set<string>();
     const fonts = new Set<string>();
     const components = new Set<string>();
-    for (const el of top) {
-      const cs = getComputedStyle(el as Element);
-      [cs.color, cs.backgroundColor, cs.borderColor].forEach((c) => {
-        if (c && c !== "rgba(0, 0, 0, 0)" && c !== "transparent") colors.add(c);
-      });
-      if (cs.fontFamily) fonts.add(cs.fontFamily.split(",")[0].replaceAll('"', "").trim());
+    const spacing = new Set<string>();
+    const radii = new Set<string>();
+    const shadows = new Set<string>();
+    const maxWidths = new Set<string>();
+    const lineHeights = new Set<string>();
+    const letterSpacing = new Set<string>();
+    const cssVariables: Record<string, string> = {};
+    const componentDetails: Array<{ type: string; text?: string; colors?: string[]; typography?: string; spacing?: string; shape?: string }> = [];
+    const surfaces: Array<{ selector: string; background: string; color: string }> = [];
+
+    const keep = (v: string) => v && v !== "rgba(0, 0, 0, 0)" && v !== "transparent" && v !== "none" && v !== "normal";
+    const px = (v: string) => keep(v) && /px|rem|em|%|vw|vh/.test(v);
+    const label = (el: HTMLElement) => el.tagName.toLowerCase() + (el.id ? `#${el.id}` : el.className ? `.${String(el.className).split(/\s+/).slice(0, 2).join(".")}` : "");
+
+    for (const sheet of Array.from(document.styleSheets)) {
+      try {
+        for (const rule of Array.from(sheet.cssRules)) {
+          const text = rule.cssText;
+          for (const [, name, value] of text.matchAll(/(--[\w-]+)\s*:\s*([^;}{]+)/g)) {
+            if (Object.keys(cssVariables).length < 120) cssVariables[name] = value.trim();
+          }
+        }
+      } catch {}
     }
+
+    for (const el of top) {
+      const cs = getComputedStyle(el);
+      [cs.color, cs.backgroundColor, cs.borderColor, cs.outlineColor].forEach((c) => keep(c) && colors.add(c));
+      if (cs.fontFamily) fonts.add(cs.fontFamily.split(",")[0].replaceAll('"', "").trim());
+      [cs.marginTop, cs.marginRight, cs.marginBottom, cs.marginLeft, cs.paddingTop, cs.paddingRight, cs.paddingBottom, cs.paddingLeft, cs.gap, cs.rowGap, cs.columnGap].forEach((v) => px(v) && spacing.add(v));
+      [cs.borderRadius, cs.borderTopLeftRadius, cs.borderTopRightRadius].forEach((v) => px(v) && radii.add(v));
+      if (keep(cs.boxShadow)) shadows.add(cs.boxShadow);
+      if (px(cs.maxWidth) && cs.maxWidth !== "none") maxWidths.add(cs.maxWidth);
+      if (keep(cs.lineHeight)) lineHeights.add(cs.lineHeight);
+      if (keep(cs.letterSpacing)) letterSpacing.add(cs.letterSpacing);
+      if (keep(cs.backgroundColor) && surfaces.length < 30) surfaces.push({ selector: label(el), background: cs.backgroundColor, color: cs.color });
+    }
+
+    const sample = (selector: string, type: string, limit = 8) => {
+      Array.from(document.querySelectorAll<HTMLElement>(selector)).slice(0, limit).forEach((el) => {
+        const cs = getComputedStyle(el);
+        componentDetails.push({
+          type,
+          text: el.innerText?.trim().replace(/\s+/g, " ").slice(0, 120) || undefined,
+          colors: [cs.color, cs.backgroundColor, cs.borderColor].filter(keep),
+          typography: `${cs.fontFamily.split(",")[0].replaceAll('"', "")} ${cs.fontWeight} ${cs.fontSize}/${cs.lineHeight} ${cs.letterSpacing}`,
+          spacing: `p:${cs.paddingTop} ${cs.paddingRight} ${cs.paddingBottom} ${cs.paddingLeft}; m:${cs.marginTop} ${cs.marginBottom}; gap:${cs.gap}`,
+          shape: `radius:${cs.borderRadius}; border:${cs.borderWidth} ${cs.borderStyle} ${cs.borderColor}; shadow:${cs.boxShadow}`,
+        });
+      });
+    };
+
     if (document.querySelector("nav,header")) components.add("navigation/header");
     if (document.querySelector("main section,h1")) components.add("hero section");
     if (document.querySelector("button,a[href]")) components.add("button/CTA");
@@ -240,6 +291,11 @@ async function extractPage(page: Page, domain: string, pageUrl: string) {
     if (document.querySelector("article,.card,[class*=card]")) components.add("card");
     if (document.querySelector("[class*=pricing],[id*=pricing]")) components.add("pricing block");
     if (document.querySelector("[class*=testimonial],[id*=testimonial]")) components.add("testimonial block");
+    sample("h1,h2,h3", "heading");
+    sample("button,a[href]", "button/link", 12);
+    sample("nav,header", "navigation", 4);
+    sample("article,.card,[class*=card]", "card", 12);
+    sample("footer", "footer", 2);
 
     const links = Array.from(document.querySelectorAll<HTMLAnchorElement>("a[href]"))
       .flatMap((a) => {
@@ -272,7 +328,26 @@ async function extractPage(page: Page, domain: string, pageUrl: string) {
       } catch {}
     }
 
-    return { colors: [...colors], fonts: [...fonts], links, foundComponents: [...components], foundAssets: assets, theme: "unknown" };
+    return {
+      colors: [...colors],
+      fonts: [...fonts],
+      links,
+      foundComponents: [...components],
+      foundAssets: assets,
+      theme: "unknown",
+      tokens: {
+        spacing: [...spacing],
+        radii: [...radii],
+        shadows: [...shadows],
+        maxWidths: [...maxWidths],
+        lineHeights: [...lineHeights],
+        letterSpacing: [...letterSpacing],
+        cssVariables,
+      },
+      componentDetails,
+      surfaces,
+      imagery: { imageCount: assets.filter((a) => a.type === "image").length, examples: assets.filter((a) => a.type === "image").map((a) => a.url) },
+    };
   }, { domainArg: domain, pageUrlArg: pageUrl });
 }
 
@@ -307,6 +382,16 @@ async function log(jobId: string, level: "info" | "warn" | "error", event: strin
   await insforge.insert("job_logs", [{ job_id: jobId, level, event, message, context }]);
 }
 
+function isPersistenceError(err: unknown) {
+  return err instanceof AppError && err.code === "STORAGE_FAILED"
+    || err instanceof Error && /database|storage|records|upload|insert|patch|rpc/i.test(err.message);
+}
+
+function errorDetails(err: unknown) {
+  if (!(err instanceof Error)) return String(err);
+  return JSON.stringify({ name: err.name, message: err.message, stack: err.stack });
+}
+
 async function failJob(jobId: string, code: string, message: string) {
   await setStatus(jobId, "failed", {
     error_code: code,
@@ -318,7 +403,9 @@ async function failJob(jobId: string, code: string, message: string) {
 
 async function withHeartbeat<T>(jobId: string, work: () => Promise<T>) {
   const timer = setInterval(() => {
-    void setStatus(jobId, "generating").catch((err) => console.error("[worker] heartbeat failed", err));
+    void setStatus(jobId, "generating").catch((err) => {
+      console.error("[worker] heartbeat failed", err);
+    });
   }, 60_000);
   try {
     return await work();

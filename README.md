@@ -7,7 +7,7 @@ Docrivo mengubah URL website publik menjadi dokumen `DESIGN.md`, prompt implemen
 - Next.js 16 + React 19 + Tailwind CSS v4
 - InsForge backend (Postgres + Storage)
 - Playwright worker
-- OpenRouter via InsForge AI setup (`openrouter/free` default)
+- NVIDIA NIM AI gateway (`mistralai/mistral-small-4-119b-2603` default)
 
 ## Setup
 
@@ -35,7 +35,7 @@ Terminal 2:
 npm run worker
 ```
 
-Buka `http://localhost:3000`, submit URL publik, lalu lihat hasil di `/generations/<jobId>`.
+Buka `http://localhost:3000`, submit URL publik, lalu hasil muncul langsung di halaman home.
 
 ## Checks
 

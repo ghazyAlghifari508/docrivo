@@ -87,7 +87,7 @@ Ruang lingkup acceptance criteria:
 
 - Setelah submit sukses, sistem membuat job baru.
 - Sistem mengembalikan `job_id`.
-- User diarahkan ke halaman progress/result.
+- Progress/result tampil langsung di halaman home.
 - Status awal job adalah `queued`.
 - User tidak perlu menunggu proses generate selesai di request submit pertama.
 
@@ -331,7 +331,7 @@ Setiap asset minimal menyimpan:
 
 ## AC-8.4 Asset Display
 
-- Result page menampilkan daftar asset yang ditemukan.
+- Area hasil di halaman home menampilkan daftar asset yang ditemukan.
 - Asset image yang berhasil disimpan dapat memiliki preview.
 - Font asset ditampilkan sebagai nama family/URL jika terdeteksi.
 - Sistem menampilkan disclaimer bahwa penggunaan asset mengikuti lisensi pemilik website target.
@@ -417,11 +417,11 @@ Prompt minimal berisi:
 
 ---
 
-# 11. Result Page
+# 11. Home Result Area
 
 ## AC-11.1 Result Summary
 
-Halaman result menampilkan:
+Area hasil di halaman home menampilkan:
 
 - source URL
 - status job
@@ -651,7 +651,7 @@ Admin dapat melihat:
 - Submit URL memberikan response awal maksimal 2 detik dalam kondisi normal.
 - Proses generate berjalan async.
 - Job MVP untuk maksimal 5 halaman idealnya selesai dalam 1–3 menit, tergantung target website dan AI provider.
-- Halaman result tetap responsif saat markdown panjang.
+- Area hasil di halaman home tetap responsif saat markdown panjang.
 - Polling status tidak membebani server secara berlebihan.
 
 ## AC-18.2 Reliability
@@ -759,7 +759,7 @@ MVP dianggap lengkap jika tersedia:
 7. Basic extraction.
 8. AI `DESIGN.md` generation.
 9. AI prompt generation.
-10. Result page.
+10. Home result area.
 11. Copy/download markdown.
 12. Error handling.
 13. Rate limit dasar.
