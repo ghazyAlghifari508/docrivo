@@ -139,7 +139,7 @@ export function HtmlScraper() {
             <iframe
               title={`Preview ${result.sourceUrl}`}
               src={result.previewUrl}
-              sandbox=""
+              sandbox="allow-same-origin"
               referrerPolicy="no-referrer"
               className="h-[75vh] w-full bg-paper-white"
             />
