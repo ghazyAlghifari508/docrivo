@@ -21,7 +21,6 @@ export async function GET(req: Request) {
       headers: {
         "Content-Type": contentType,
         "Cache-Control": "public, max-age=3600",
-        "Access-Control-Allow-Origin": "*",
         "X-Content-Type-Options": "nosniff",
         "Content-Security-Policy": "sandbox; default-src 'none'",
       },
