@@ -315,6 +315,7 @@ function Metric({ title, value }: { title: string; value: string }) {
 function StatusPill({ status }: { status: string }) {
   const failed = status === "failed";
   const done = status === "completed";
+  if (failed) return <span className="inline-flex text-caption font-medium uppercase tracking-[0.06em] text-red-400">Gagal</span>;
   return (
     <span
       className={`inline-flex items-center gap-2 rounded-pills border px-3 py-1.5 text-caption font-medium uppercase tracking-[0.06em] ${
