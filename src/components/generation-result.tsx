@@ -9,7 +9,7 @@ import {
   Warning,
   CircleNotch,
 } from "@phosphor-icons/react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { pushHistory, getHistory } from "@/lib/history";
 
 type Job = {
@@ -193,27 +193,24 @@ export function GenerationResult({
           </div>
         </div>
 
-        {/* stage tracker */}
+        {/* stage tracker — plain text only, no badges */}
         {!failed && (
           <div className="page-shell pb-10">
-            <ol className="flex flex-wrap gap-2">
+            <ol className="flex flex-wrap gap-x-4 gap-y-1">
               {STAGES.map((s) => {
                 const idx = STAGES.indexOf(s);
                 const cur = STAGES.indexOf(job.status);
                 const state = cur > idx ? "done" : cur === idx ? "active" : "todo";
+                const label = STATUS_LABEL[s] ?? s;
                 return (
                   <li
                     key={s}
-                    className={`inline-flex items-center gap-1.5 rounded-pills border px-3 py-1.5 text-caption font-medium capitalize ${
-                      state === "done"
-                        ? "border-mint-edge bg-mint-wash/10 text-mint-edge"
-                        : state === "active"
-                          ? "border-lime-sprint bg-lime-sprint/15 text-lime-sprint"
-                          : "border-paper-white/15 text-paper-white/70"
+                    className={`inline-flex items-center gap-1 text-caption font-medium capitalize ${
+                      state === "active" ? "text-lime-sprint" : state === "done" ? "text-mint-edge/60" : "text-paper-white/40"
                     }`}
                   >
-                    {state === "done" ? <Check size={13} weight="bold" /> : null}
-                    {STATUS_LABEL[s] ?? s}
+                    {state === "done" ? <Check size={12} weight="bold" /> : null}
+                    {state === "active" ? <AnimatedLabel label={label} /> : label}
                   </li>
                 );
               })}
@@ -312,6 +309,16 @@ function Metric({ title, value }: { title: string; value: string }) {
   );
 }
 
+/** Label with animated dots: "." → ".." → "..." cyclically. */
+function AnimatedLabel({ label }: { label: string }) {
+  return (
+    <span>
+      {label}
+      <span className="dots-anim" />
+    </span>
+  );
+}
+
 function StatusPill({ status }: { status: string }) {
   const failed = status === "failed";
   const done = status === "completed";
@@ -348,3 +355,5 @@ function Retry({ id, onRetry }: { id: string; onRetry?: (jobId: string) => void 
     </button>
   );
 }
+
+<style>{`.dots-anim::after { content: "."; animation: dots 1.8s steps(3) infinite; } @keyframes dots { 33% { content: ".."; } 66% { content: "..."; } }`}</style>
