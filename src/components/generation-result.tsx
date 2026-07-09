@@ -50,6 +50,11 @@ export function GenerationResult({
   const [copied, setCopied] = useState(false);
   const [loadError, setLoadError] = useState<"" | "not_found" | "transient">("");
   const historySaved = useRef(false);
+  // Sliding window of [timestamp, progress] samples — used to estimate remaining time.
+  const samplesRef = useRef<Array<{ t: number; p: number }>>([]);
+  const [remaining, setRemaining] = useState(0);
+  // Reset the sample window when a new job id is shown.
+  useEffect(() => { samplesRef.current = []; }, [id]);
 
   // Reset the once-per-job guard when a new job id is shown (e.g. after retry).
   useEffect(() => {
@@ -83,6 +88,15 @@ export function GenerationResult({
         if (!alive) return;
         setLoadError("");
         setJob(json);
+        // Sliding window: keep up to 3 samples for progress-rate estimation.
+        const samples = samplesRef.current;
+        samples.push({ t: Date.now(), p: json.progress });
+        if (samples.length > 3) samples.shift();
+        if (samples.length >= 2 && !["completed", "failed", "cancelled"].includes(json.status)) {
+          const dt = (samples[samples.length - 1].t - samples[0].t) / 1000;
+          const dp = samples[samples.length - 1].p - samples[0].p;
+          if (dp > 0) setRemaining(Math.round(((100 - samples[samples.length - 1].p) / dp) * dt));
+        }
         if (!["completed", "failed", "cancelled"].includes(json.status)) timer = setTimeout(tick, 2500);
       } catch (err) {
         if (!alive || (err instanceof DOMException && err.name === "AbortError")) return;
@@ -138,12 +152,6 @@ export function GenerationResult({
     );
   }
 
-  const elapsed = timeSince(job.createdAt);
-  const curStage = Math.max(0, STAGES.indexOf(job.status));
-  const stageWeight = curStage / STAGES.length;
-  const estimatedTotal = stageWeight > 0.05 ? Math.round(elapsed / stageWeight) : 0;
-  const remaining = Math.max(0, estimatedTotal - elapsed);
-
   const markdown = job.result?.designMd;
   const done = ["completed", "failed", "cancelled"].includes(job.status);
   const failed = job.status === "failed";
@@ -196,7 +204,7 @@ export function GenerationResult({
                   : "DESIGN.md siap ditempel ke AI coding assistant."
                 : `AI sedang ${STATUS_LABEL[job.status]?.toLowerCase() ?? "memproses"} halaman referensi…`}
             </p>
-            {!done && remaining > 30 && (
+            {!done && remaining > 10 && (
               <p className="mt-1 text-caption text-paper-white/40">
                 Estimasi sisa {remaining >= 120 ? `${Math.round(remaining / 60)} menit` : `${remaining} detik`}
               </p>
@@ -319,11 +327,6 @@ function Metric({ title, value }: { title: string; value: string }) {
       <p className="mt-2 text-heading font-semibold tabular-nums tracking-heading">{value}</p>
     </div>
   );
-}
-
-/** Seconds elapsed since an ISO-8601 timestamp. */
-function timeSince(iso: string): number {
-  return Math.round((Date.now() - new Date(iso).getTime()) / 1000);
 }
 
 /** Label with animated dots: "." → ".." → "..." cyclically. */
