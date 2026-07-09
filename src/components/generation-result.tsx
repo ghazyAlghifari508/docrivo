@@ -9,7 +9,8 @@ import {
   Warning,
   CircleNotch,
 } from "@phosphor-icons/react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { pushHistory, getHistory } from "@/lib/history";
 
 type Job = {
   id: string;
@@ -47,6 +48,21 @@ export function GenerationResult({
   const [job, setJob] = useState<Job | null>(null);
   const [copied, setCopied] = useState(false);
   const [loadError, setLoadError] = useState<"" | "not_found" | "transient">("");
+  const historySaved = useRef(false);
+
+  // Reset the once-per-job guard when a new job id is shown (e.g. after retry).
+  useEffect(() => {
+    historySaved.current = false;
+  }, [id]);
+
+  // Only record history once the DESIGN.md is fully generated, never while it's
+  // still processing — a half-finished job shouldn't clutter the history list.
+  useEffect(() => {
+    if (historySaved.current || job?.status !== "completed" || !job.result) return;
+    historySaved.current = true;
+    if (getHistory().some((h) => h.jobId === id)) return;
+    pushHistory({ kind: "generate", url: job.sourceUrl, jobId: id });
+  }, [job?.status, job?.result, job?.sourceUrl, id]);
 
   useEffect(() => {
     let alive = true;

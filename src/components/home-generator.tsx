@@ -1,16 +1,28 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { FileMd, Code } from "@phosphor-icons/react";
 import { GenerationForm } from "./generation-form";
 import { GenerationResult } from "./generation-result";
 import { HtmlScraper } from "./html-scraper";
+import { getActiveJobId, setActiveJobId } from "@/lib/history";
 
 type Tab = "design" | "scrape";
 
 export function HomeGenerator() {
   const [tab, setTab] = useState<Tab>("design");
   const [jobId, setJobId] = useState("");
+
+  // Restore the last generation so leaving the page and coming back keeps it.
+  useEffect(() => {
+    const active = getActiveJobId();
+    if (active) setJobId(active);
+  }, []);
+
+  function showJob(id: string) {
+    setActiveJobId(id);
+    setJobId(id);
+  }
 
   return (
     <>
@@ -27,7 +39,7 @@ export function HomeGenerator() {
           an in-flight scrape/generate or its result. */}
       <div hidden={tab !== "design"}>
         <div className="mx-auto max-w-2xl">
-          <GenerationForm onCreated={setJobId} />
+          <GenerationForm onCreated={showJob} />
         </div>
 
         {jobId ? (
@@ -40,7 +52,7 @@ export function HomeGenerator() {
                 Tempel ke AI coding assistant agar hasil UI lebih <span className="emph">terarah</span>.
               </h2>
             </div>
-            <GenerationResult id={jobId} embedded onRetry={setJobId} />
+            <GenerationResult id={jobId} embedded onRetry={showJob} />
           </section>
         ) : null}
       </div>

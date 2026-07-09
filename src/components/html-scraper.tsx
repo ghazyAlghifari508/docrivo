@@ -2,7 +2,7 @@
 
 import { ArrowRight, GlobeHemisphereWest, Warning, DownloadSimple, CircleNotch, Code } from "@phosphor-icons/react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { pushHistory, getHistory, saveScrapeArtifact } from "@/lib/history";
+import { pushHistory, getHistory, saveScrapeArtifact, getScrapeArtifact, getActiveScrapeId, setActiveScrapeId } from "@/lib/history";
 
 type Scraped = {
   sourceUrl: string;
@@ -37,6 +37,22 @@ export function HtmlScraper() {
     return () => {
       aliveRef.current = false;
       if (blobRef.current) URL.revokeObjectURL(blobRef.current);
+    };
+  }, []);
+
+  // Restore the last scrape output so navigating away and back keeps it on screen.
+  useEffect(() => {
+    const activeId = getActiveScrapeId();
+    if (!activeId) return;
+    let alive = true;
+    getScrapeArtifact(activeId).then((artifact) => {
+      if (!alive || !aliveRef.current || !artifact) return;
+      const blobUrl = URL.createObjectURL(new Blob([artifact.html], { type: "text/html" }));
+      blobRef.current = blobUrl;
+      setResult({ ...artifact, blobUrl });
+    });
+    return () => {
+      alive = false;
     };
   }, []);
 
@@ -75,6 +91,7 @@ export function HtmlScraper() {
         return;
       }
       pushHistory({ kind: "scrape", url: json.sourceUrl ?? targetUrl, scrapeId });
+      setActiveScrapeId(scrapeId);
       if (!aliveRef.current) return;
       const blobUrl = URL.createObjectURL(new Blob([json.html], { type: "text/html" }));
       blobRef.current = blobUrl;
