@@ -2,7 +2,6 @@
 
 import { ArrowRight, GlobeHemisphereWest, Warning } from "@phosphor-icons/react";
 import { useState, type FormEvent } from "react";
-import { pushHistory } from "@/lib/history";
 
 export function GenerationForm({
   tone = "light",
@@ -34,7 +33,6 @@ export function GenerationForm({
         setError("DESIGN.md gagal dibuat. Pastikan link publik bisa dibuka, lalu coba lagi.");
         return;
       }
-      pushHistory({ kind: "generate", url: url.trim(), jobId: json.jobId });
       onCreated(json.jobId);
     } catch {
       setError("Jaringan bermasalah. Coba lagi sebentar lagi.");
@@ -80,14 +78,14 @@ Website referensi
         </button>
       </div>
 
-      <div className="mt-3 flex items-center gap-2">
+      <div className="mt-3 flex items-center justify-center gap-2">
         {error ? (
           <p id={errorId} role="alert" className="inline-flex items-center gap-1.5 text-caption font-medium text-red-700">
             <Warning size={15} weight="fill" aria-hidden="true" />
             {error}
           </p>
         ) : (
-          <p id={helperId} className={`text-caption ${dark ? "text-paper-white/60" : "text-muted-gray"}`}>
+          <p id={helperId} className={`text-caption text-center ${dark ? "text-paper-white/60" : "text-muted-gray"}`}>
             Tempel website publik yang style-nya ingin kamu jadikan instruksi untuk AI coding assistant.
           </p>
         )}

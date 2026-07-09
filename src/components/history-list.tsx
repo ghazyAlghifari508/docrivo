@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { ArrowRight, Code, FileMd, GlobeHemisphereWest, Trash } from "@phosphor-icons/react";
-import { getHistory, clearHistory, type HistoryEntry } from "@/lib/history";
+import { useEffect, useState, useCallback } from "react";
+import { ArrowRight, Code, FileMd, GlobeHemisphereWest, Trash, Warning } from "@phosphor-icons/react";
+import { getHistory, clearHistory, removeHistoryEntry, type HistoryEntry } from "@/lib/history";
 
 function timeAgo(ts: number): string {
   const s = Math.floor((Date.now() - ts) / 1000);
@@ -17,6 +17,7 @@ function timeAgo(ts: number): string {
 
 export function HistoryList() {
   const [items, setItems] = useState<HistoryEntry[] | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<HistoryEntry | null>(null);
 
   useEffect(() => {
     const sync = () => setItems(getHistory());
@@ -28,6 +29,13 @@ export function HistoryList() {
       window.removeEventListener("storage", sync);
     };
   }, []);
+
+  const handleDelete = useCallback(() => {
+    if (!confirmDelete) return;
+    removeHistoryEntry(confirmDelete.id);
+    setItems(getHistory());
+    setConfirmDelete(null);
+  }, [confirmDelete]);
 
   if (items === null) {
     return <p className="text-body-sm text-muted-gray">Memuat riwayat…</p>;
@@ -64,16 +72,49 @@ export function HistoryList() {
 
       <ul className="space-y-3">
         {items.map((it) => (
-          <li key={it.id}>
-            <HistoryRow entry={it} />
+          <li key={it.id} className="group relative">
+            <HistoryRow entry={it} onDelete={() => setConfirmDelete(it)} />
           </li>
         ))}
       </ul>
+
+      {/* Confirm delete modal */}
+      {confirmDelete ? (
+        <div
+          className="fixed inset-0 z-50 grid place-items-center bg-black/40 px-4"
+          onClick={() => setConfirmDelete(null)}
+        >
+          <div
+            className="w-full max-w-sm rounded-cards border border-ink bg-paper-white p-6 shadow-hard-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <span className="mx-auto grid size-12 place-items-center rounded-buttons border border-ink bg-cream shadow-hard">
+              <Warning size={22} weight="fill" aria-hidden="true" />
+            </span>
+            <p className="mt-5 text-center text-body-sm font-semibold text-ink">Yakin ingin hapus riwayat ini?</p>
+            <p className="mt-2 text-center text-caption text-muted-gray">Riwayat akan dihapus dari browser ini dan tidak bisa dikembalikan.</p>
+            <div className="mt-6 flex gap-3">
+              <button
+                onClick={() => setConfirmDelete(null)}
+                className="flex-1 rounded-buttons border border-ink bg-paper-white px-4 py-2.5 text-body-sm font-medium text-ink shadow-hard"
+              >
+                Batal
+              </button>
+              <button
+                onClick={handleDelete}
+                className="flex-1 rounded-buttons border border-ink bg-red-500 px-4 py-2.5 text-body-sm font-medium text-paper-white shadow-hard"
+              >
+                Hapus
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
 
-function HistoryRow({ entry }: { entry: HistoryEntry }) {
+function HistoryRow({ entry, onDelete }: { entry: HistoryEntry; onDelete: () => void }) {
   const isScrape = entry.kind === "scrape";
   const inner = (
     <div className="flex items-center gap-3 rounded-cards border border-ink bg-paper-white p-4 shadow-hard">
@@ -90,12 +131,20 @@ function HistoryRow({ entry }: { entry: HistoryEntry }) {
         </p>
       </div>
       <span className="shrink-0 text-caption text-muted-gray">{timeAgo(entry.at)}</span>
-      {!isScrape && entry.jobId ? <ArrowRight size={16} className="shrink-0 text-muted" aria-hidden="true" /> : null}
+      <button
+        aria-label="Hapus"
+        onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDelete(); }}
+        className="shrink-0 text-muted-gray hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+      >
+        <Trash size={16} />
+      </button>
+      {(!isScrape && entry.jobId) || (isScrape && entry.scrapeId) ? <ArrowRight size={16} className="shrink-0 text-muted" aria-hidden="true" /> : null}
     </div>
   );
 
-  // Generate entries deep-link to their result; scrape entries are informational
-  // (scrape output is a live blob, not a persisted record) so re-run from home.
+  if (isScrape && entry.scrapeId) {
+    return <Link href={`/history/scrapes/${entry.scrapeId}`}>{inner}</Link>;
+  }
   if (!isScrape && entry.jobId) {
     return <Link href={`/generations/${entry.jobId}`}>{inner}</Link>;
   }

@@ -9,7 +9,8 @@ import {
   Warning,
   CircleNotch,
 } from "@phosphor-icons/react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
+import { pushHistory, getHistory } from "@/lib/history";
 
 type Job = {
   id: string;
@@ -18,6 +19,7 @@ type Job = {
   progress: number;
   errorMessage?: string;
   pagesAnalyzed: number;
+  createdAt: string;
   assets: Array<{ id: string; asset_type: string; source_url: string; filename?: string; status: string }>;
   pages: Array<{ id: string; url: string; title?: string; screenshot_desktop_url?: string }>;
   result: null | { designMd: string; implementationPrompt: string };
@@ -47,6 +49,26 @@ export function GenerationResult({
   const [job, setJob] = useState<Job | null>(null);
   const [copied, setCopied] = useState(false);
   const [loadError, setLoadError] = useState<"" | "not_found" | "transient">("");
+  const historySaved = useRef(false);
+  // Sliding window of [timestamp, progress] samples — used to estimate remaining time.
+  const samplesRef = useRef<Array<{ t: number; p: number }>>([]);
+  const [remaining, setRemaining] = useState(0);
+  // Reset the sample window when a new job id is shown.
+  useEffect(() => { samplesRef.current = []; }, [id]);
+
+  // Reset the once-per-job guard when a new job id is shown (e.g. after retry).
+  useEffect(() => {
+    historySaved.current = false;
+  }, [id]);
+
+  // Only record history once the DESIGN.md is fully generated, never while it's
+  // still processing — a half-finished job shouldn't clutter the history list.
+  useEffect(() => {
+    if (historySaved.current || job?.status !== "completed" || !job.result) return;
+    historySaved.current = true;
+    if (getHistory().some((h) => h.jobId === id)) return;
+    pushHistory({ kind: "generate", url: job.sourceUrl, jobId: id });
+  }, [job?.status, job?.result, job?.sourceUrl, id]);
 
   useEffect(() => {
     let alive = true;
@@ -66,6 +88,15 @@ export function GenerationResult({
         if (!alive) return;
         setLoadError("");
         setJob(json);
+        // Sliding window: keep up to 3 samples for progress-rate estimation.
+        const samples = samplesRef.current;
+        samples.push({ t: Date.now(), p: json.progress });
+        if (samples.length > 3) samples.shift();
+        if (samples.length >= 2 && !["completed", "failed", "cancelled"].includes(json.status)) {
+          const dt = (samples[samples.length - 1].t - samples[0].t) / 1000;
+          const dp = samples[samples.length - 1].p - samples[0].p;
+          if (dp > 0) setRemaining(Math.round(((100 - samples[samples.length - 1].p) / dp) * dt));
+        }
         if (!["completed", "failed", "cancelled"].includes(json.status)) timer = setTimeout(tick, 2500);
       } catch (err) {
         if (!alive || (err instanceof DOMException && err.name === "AbortError")) return;
@@ -148,7 +179,10 @@ export function GenerationResult({
           <div className="rounded-cards border border-paper-white/15 bg-paper-white/5 p-5">
             <div className="flex items-center justify-between text-caption text-paper-white/60">
               <span>Proses</span>
-              <span className="tabular-nums">{job.progress}%</span>
+              <span className="inline-flex items-center gap-1.5 tabular-nums">
+                {!done && <span className="inline-block size-3 rounded-full border-2 border-current border-t-transparent animate-spin" />}
+                {job.progress}%
+              </span>
             </div>
             <div
               role="progressbar"
@@ -168,33 +202,35 @@ export function GenerationResult({
                 ? failed
                   ? "Proses berhenti. Coba ulangi dari referensi yang sama."
                   : "DESIGN.md siap ditempel ke AI coding assistant."
-                : "Kami sedang membaca style website dan menyusun instruksi desain untuk AI."}
+                : `AI sedang ${STATUS_LABEL[job.status]?.toLowerCase() ?? "memproses"} halaman referensi…`}
             </p>
+            {!done && remaining > 10 && (
+              <p className="mt-1 text-caption text-paper-white/40">
+                Estimasi sisa {remaining >= 120 ? `${Math.round(remaining / 60)} menit` : `${remaining} detik`}
+              </p>
+            )}
             {failed ? <Retry id={id} onRetry={onRetry} /> : null}
           </div>
         </div>
 
-        {/* stage tracker */}
+        {/* stage tracker — plain text only, no badges */}
         {!failed && (
           <div className="page-shell pb-10">
-            <ol className="flex flex-wrap gap-2">
+            <ol className="flex flex-wrap gap-x-4 gap-y-1">
               {STAGES.map((s) => {
                 const idx = STAGES.indexOf(s);
                 const cur = STAGES.indexOf(job.status);
                 const state = cur > idx ? "done" : cur === idx ? "active" : "todo";
+                const label = STATUS_LABEL[s] ?? s;
                 return (
                   <li
                     key={s}
-                    className={`inline-flex items-center gap-1.5 rounded-pills border px-3 py-1.5 text-caption font-medium capitalize ${
-                      state === "done"
-                        ? "border-mint-edge bg-mint-wash/10 text-mint-edge"
-                        : state === "active"
-                          ? "border-lime-sprint bg-lime-sprint/15 text-lime-sprint"
-                          : "border-paper-white/15 text-paper-white/70"
+                    className={`inline-flex items-center gap-1 text-caption font-medium capitalize ${
+                      state === "active" ? "text-lime-sprint" : state === "done" ? "text-mint-edge/60" : "text-paper-white/40"
                     }`}
                   >
-                    {state === "done" ? <Check size={13} weight="bold" /> : null}
-                    {STATUS_LABEL[s] ?? s}
+                    {state === "done" ? <Check size={12} weight="bold" /> : null}
+                    {state === "active" ? <AnimatedLabel label={label} /> : label}
                   </li>
                 );
               })}
@@ -293,20 +329,31 @@ function Metric({ title, value }: { title: string; value: string }) {
   );
 }
 
+/** Label with animated dots: "." → ".." → "..." cyclically. */
+function AnimatedLabel({ label }: { label: string }) {
+  return (
+    <span>
+      {label}
+      <span className="dots-anim" />
+    </span>
+  );
+}
+
 function StatusPill({ status }: { status: string }) {
   const failed = status === "failed";
   const done = status === "completed";
+  if (failed) return <span className="inline-flex text-caption font-medium uppercase tracking-[0.06em] text-red-400">Gagal</span>;
   return (
     <span
       className={`inline-flex items-center gap-2 rounded-pills border px-3 py-1.5 text-caption font-medium uppercase tracking-[0.06em] ${
         failed
-          ? "border-red-400 bg-red-500/10 text-red-300"
+          ? "border-red-400/50 text-red-400"
           : done
             ? "border-mint-edge bg-mint-wash/10 text-mint-edge"
             : "border-lime-sprint bg-lime-sprint/15 text-lime-sprint"
       }`}
     >
-      <span className={`size-2 rounded-full ${failed ? "bg-red-400" : done ? "bg-mint-edge" : "bg-lime-sprint"}`} />
+      {!failed && <span className={`size-2 rounded-full ${done ? "bg-mint-edge" : "bg-lime-sprint"}`} />}
       {STATUS_LABEL[status] ?? status}
     </span>
   );
@@ -328,3 +375,5 @@ function Retry({ id, onRetry }: { id: string; onRetry?: (jobId: string) => void 
     </button>
   );
 }
+
+<style>{`.dots-anim::after { content: "."; animation: dots 1.8s steps(3) infinite; } @keyframes dots { 33% { content: ".."; } 66% { content: "..."; } }`}</style>

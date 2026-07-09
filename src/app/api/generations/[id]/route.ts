@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { insforge } from "@/lib/insforge";
 
 type JobRow = {
@@ -16,13 +16,22 @@ type JobRow = {
 type DocRow = { design_md: string | null; implementation_prompt: string | null };
 
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
 
   const job = await insforge.maybeSingle<JobRow>("generation_jobs", { id: `eq.${id}` });
   if (!job) return NextResponse.json({ error: { code: "NOT_FOUND" } }, { status: 404 });
+
+  if (job.status === "queued") {
+    after(() => {
+      void fetch(new URL("/api/worker/tick", req.url), { method: "POST" }).catch((err) => {
+        if (err && (err as Error).message) console.error("[api] worker tick failed", (err as Error).message);
+        else console.error("[api] worker tick failed (no message)");
+      });
+    });
+  }
 
   const [pages, assets, document] = await Promise.all([
     insforge.select("crawled_pages", {
