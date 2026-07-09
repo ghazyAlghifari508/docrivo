@@ -175,6 +175,17 @@ export async function getScrapeArtifact(id: string): Promise<ScrapeArtifact | nu
   }
 }
 
+export function removeHistoryEntry(id: string): void {
+  if (typeof window === "undefined") return;
+  const next = read().filter((h) => h.id !== id);
+  try {
+    window.localStorage.setItem(KEY, JSON.stringify(next));
+    window.dispatchEvent(new CustomEvent("docrivo:history"));
+  } catch {
+    /* best-effort */
+  }
+}
+
 export function clearHistory(): void {
   if (typeof window === "undefined") return;
   try {
