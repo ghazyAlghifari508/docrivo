@@ -67,7 +67,7 @@ export async function fetchAsset(
   });
 }
 
-export async function scrapeHtml(rawUrl: string) {
+export async function scrapeHtml(rawUrl: string, attemptNumber?: number) {
   const { url } = await validateUrl(rawUrl);
   // Render in a real browser so client-rendered sites (React/Next/Framer/GSAP)
   // yield full DOM + assets, not the empty pre-JS shell a raw fetch returns.
@@ -82,7 +82,7 @@ export async function scrapeHtml(rawUrl: string) {
     html,
     previewHtml,
     metadata: {
-      attempt: 1,
+      attempt: attemptNumber ?? 1,
       capturedAt,
       finalUrl: rendered.finalUrl,
       viewport: DESKTOP_VIEWPORT,

@@ -2,7 +2,7 @@
 
 import { ArrowRight, GlobeHemisphereWest, Warning, DownloadSimple, CircleNotch, Code } from "@phosphor-icons/react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { pushHistory } from "@/lib/history";
+import { pushHistory, getHistory, type HistoryEntry } from "@/lib/history";
 
 type Scraped = {
   sourceUrl: string;
@@ -51,10 +51,12 @@ export function HtmlScraper() {
     }
     setResult(null);
     try {
+      const targetUrl = url.trim();
+      const attemptNumber = getHistory().filter((h) => h.kind === "scrape" && h.url === targetUrl).length + 1;
       const res = await fetch("/api/scrape", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url }),
+        body: JSON.stringify({ url: targetUrl, attemptNumber }),
       });
       const json = await res.json();
       if (!res.ok) {

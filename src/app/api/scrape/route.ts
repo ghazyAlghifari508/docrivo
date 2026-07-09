@@ -6,7 +6,7 @@ import { rateLimit } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 
-const Body = z.object({ url: z.string().min(1) });
+const Body = z.object({ url: z.string().min(1), attemptNumber: z.number().int().positive().optional() });
 
 export async function POST(req: Request) {
   try {
@@ -18,8 +18,8 @@ export async function POST(req: Request) {
       );
     }
 
-    const { url } = Body.parse(await req.json());
-    return NextResponse.json(await scrapeHtml(url));
+    const { url, attemptNumber } = Body.parse(await req.json());
+    return NextResponse.json(await scrapeHtml(url, attemptNumber));
   } catch (err) {
     if (err instanceof AppError) {
       return NextResponse.json(
