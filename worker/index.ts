@@ -392,7 +392,7 @@ export async function claimNextJob(): Promise<GenerationJob | null> {
 const monotonicProgress = new Map<string, number>();
 
 async function setStatus(jobId: string, status: GenerationJob["status"], extra: Record<string, unknown> = {}) {
-  const stageProgress: Record<string, number> = { queued: 0, crawling: 20, capturing: 40, extracting: 60, generating: 80, completed: 100, failed: 100, cancelled: 100 };
+  const stageProgress: Record<string, number> = { queued: 0, crawling: 20, capturing: 40, extracting: 60, generating: 80, completed: 100, failed: 0, cancelled: 0 };
   // Use explicit progress from caller (per-page loop) else fall back to stage default.
   let prog = (extra.progress as number | undefined) ?? stageProgress[status];
   const { progress: _omit, ...rest } = extra as Record<string, unknown> & { progress?: number };
@@ -401,6 +401,8 @@ async function setStatus(jobId: string, status: GenerationJob["status"], extra: 
   if (prog < prev) prog = prev;
   if (prog > prev) monotonicProgress.set(jobId, prog);
   // Clear marker on terminal states so next job isn't capped.
+  // Failed/cancelled also force 0 so the bar doesn't show 100% – use explicit 0 bypass clamp.
+  if (status === "failed" || status === "cancelled") prog = 0;
   if (["completed", "failed", "cancelled"].includes(status)) monotonicProgress.delete(jobId);
   await insforge.update("generation_jobs", { id: jobId }, {
     status,

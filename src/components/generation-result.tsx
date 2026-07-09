@@ -319,13 +319,13 @@ function StatusPill({ status }: { status: string }) {
     <span
       className={`inline-flex items-center gap-2 rounded-pills border px-3 py-1.5 text-caption font-medium uppercase tracking-[0.06em] ${
         failed
-          ? "border-red-400 bg-red-500/10 text-red-300"
+          ? "border-red-400/50 text-red-400"
           : done
             ? "border-mint-edge bg-mint-wash/10 text-mint-edge"
             : "border-lime-sprint bg-lime-sprint/15 text-lime-sprint"
       }`}
     >
-      <span className={`size-2 rounded-full ${failed ? "bg-red-400" : done ? "bg-mint-edge" : "bg-lime-sprint"}`} />
+      {!failed && <span className={`size-2 rounded-full ${done ? "bg-mint-edge" : "bg-lime-sprint"}`} />}
       {STATUS_LABEL[status] ?? status}
     </span>
   );
