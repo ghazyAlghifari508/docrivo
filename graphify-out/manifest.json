@@ -1,0 +1,278 @@
+{
+  "C:\\Coding\\Web Development\\Next\\docrivo\\eslint.config.mjs": {
+    "mtime": 1783310489.3366556,
+    "hash": "dfa1f5f6a7037bf39dc510f30b180002"
+  },
+  "C:\\Coding\\Web Development\\Next\\docrivo\\next-env.d.ts": {
+    "mtime": 1783580922.151512,
+    "hash": "2a74d3909800ca5467fa83b0ab4a4890"
+  },
+  "C:\\Coding\\Web Development\\Next\\docrivo\\next.config.ts": {
+    "mtime": 1783448955.4923148,
+    "hash": "bae6ca2b71259ce146afb30439333603"
+  },
+  "C:\\Coding\\Web Development\\Next\\docrivo\\postcss.config.mjs": {
+    "mtime": 1783310489.354656,
+    "hash": "239f3ebf717465dc636818a1a619398d"
+  },
+  "C:\\Coding\\Web Development\\Next\\docrivo\\vitest.config.ts": {
+    "mtime": 1783450635.134612,
+    "hash": "60096b6671e55a0abb2011fa23e3422d"
+  },
+  "C:\\Coding\\Web Development\\Next\\docrivo\\migrations\\20260706041528_init-designmd.sql": {
+    "mtime": 1783311390.4625773,
+    "hash": "fbc99f3d7598a5bc68d7ce7dd40ff132"
+  },
+  "C:\\Coding\\Web Development\\Next\\docrivo\\migrations\\20260706042135_claim-next-job.sql": {
+    "mtime": 1783311713.7950554,
+    "hash": "56c981f3424688892cdcc236f74b2a8c"
+  },
+  "C:\\Coding\\Web Development\\Next\\docrivo\\migrations\\20260706060024_hardening.sql": {
+    "mtime": 1783317662.6556602,
+    "hash": "21a5534813825a7ca1b6655f124ea8a5"
+  },
+  "C:\\Coding\\Web Development\\Next\\docrivo\\migrations\\20260706062520_atomic-retry.sql": {
+    "mtime": 1783319151.661944,
+    "hash": "9b849a035864a36b1924b6492660a06b"
+  },
+  "C:\\Coding\\Web Development\\Next\\docrivo\\migrations\\20260706070500_rls-and-fk-indexes.sql": {
+    "mtime": 1783322251.6472664,
+    "hash": "4cdb878843ee159b53180cb285556e55"
+  },
+  "C:\\Coding\\Web Development\\Next\\docrivo\\migrations\\20260706072000_explicit-deny-rls-policies.sql": {
+    "mtime": 1783323482.9767323,
+    "hash": "f0f7c71563bc6d01c41bc469b5222344"
+  },
+  "C:\\Coding\\Web Development\\Next\\docrivo\\src\\middleware.ts": {
+    "mtime": 1783313333.7406232,
+    "hash": "32409b316cd955fa84b49034b7a766ad"
+  },
+  "C:\\Coding\\Web Development\\Next\\docrivo\\src\\app\\layout.tsx": {
+    "mtime": 1783418669.992622,
+    "hash": "c0d728017a4b2f4d6e774c7d58f2afe7"
+  },
+  "C:\\Coding\\Web Development\\Next\\docrivo\\src\\app\\page.tsx": {
+    "mtime": 1783418669.9936225,
+    "hash": "985ba26254e9e466f54e78bce99b4e33"
+  },
+  "C:\\Coding\\Web Development\\Next\\docrivo\\src\\app\\about\\page.tsx": {
+    "mtime": 1783418669.9784305,
+    "hash": "52cb0347ebd312af98409727050b05be"
+  },
+  "C:\\Coding\\Web Development\\Next\\docrivo\\src\\app\\admin\\page.tsx": {
+    "mtime": 1783418669.9800217,
+    "hash": "e093721709af8b7e1a83be9724df91af"
+  },
+  "C:\\Coding\\Web Development\\Next\\docrivo\\src\\app\\api\\generations\\route.ts": {
+    "mtime": 1783418669.9827216,
+    "hash": "f5f8fbcc0c35ad256db4c135ed61ecd5"
+  },
+  "C:\\Coding\\Web Development\\Next\\docrivo\\src\\app\\api\\generations\\[id]\\route.ts": {
+    "mtime": 1783314876.6453943,
+    "hash": "c912b80c9c7436997f7766f2c659e960"
+  },
+  "C:\\Coding\\Web Development\\Next\\docrivo\\src\\app\\api\\generations\\[id]\\download\\route.ts": {
+    "mtime": 1783314451.7012808,
+    "hash": "f7df4cf18f37df1ec57d2c6753c5c9ad"
+  },
+  "C:\\Coding\\Web Development\\Next\\docrivo\\src\\app\\api\\generations\\[id]\\retry\\route.ts": {
+    "mtime": 1783418669.981661,
+    "hash": "5927bb469c8d1b441f27a89f7d1ac3ba"
+  },
+  "C:\\Coding\\Web Development\\Next\\docrivo\\src\\app\\api\\scrape\\route.ts": {
+    "mtime": 1783589879.98255,
+    "hash": "4bb77e02e09d23cdcf292e7a1c5c6adf"
+  },
+  "C:\\Coding\\Web Development\\Next\\docrivo\\src\\app\\api\\scrape\\asset\\route.ts": {
+    "mtime": 1783588801.3621,
+    "hash": "06154a3adf323597b4f241f721f1bd26"
+  },
+  "C:\\Coding\\Web Development\\Next\\docrivo\\src\\app\\api\\scrape\\preview\\route.ts": {
+    "mtime": 1783448968.1176064,
+    "hash": "0bf70c122fdda02b14d72f8ac54d0bbf"
+  },
+  "C:\\Coding\\Web Development\\Next\\docrivo\\src\\app\\bantuan\\page.tsx": {
+    "mtime": 1783418669.98749,
+    "hash": "32e6c22f7610ec9a5a92086d9ef6f5d0"
+  },
+  "C:\\Coding\\Web Development\\Next\\docrivo\\src\\app\\faq\\page.tsx": {
+    "mtime": 1783418669.9902027,
+    "hash": "49196f506635496c14f904f71d193361"
+  },
+  "C:\\Coding\\Web Development\\Next\\docrivo\\src\\app\\generations\\[id]\\page.tsx": {
+    "mtime": 1783449102.1379435,
+    "hash": "6ab00183e524f8de6c65c29fffeb41f2"
+  },
+  "C:\\Coding\\Web Development\\Next\\docrivo\\src\\app\\history\\page.tsx": {
+    "mtime": 1783449094.805303,
+    "hash": "47e4c15a1e6e2c2d030bac206d8adc47"
+  },
+  "C:\\Coding\\Web Development\\Next\\docrivo\\src\\components\\faq-groups.tsx": {
+    "mtime": 1783418669.995623,
+    "hash": "a69bf465b642158b92da19963efb001b"
+  },
+  "C:\\Coding\\Web Development\\Next\\docrivo\\src\\components\\generation-form.tsx": {
+    "mtime": 1783449045.7938452,
+    "hash": "8dea9f15c6d5200b25cf4b4ce497d86b"
+  },
+  "C:\\Coding\\Web Development\\Next\\docrivo\\src\\components\\generation-result.tsx": {
+    "mtime": 1783455634.163024,
+    "hash": "ed62daee06b700510621ea24a15e0447"
+  },
+  "C:\\Coding\\Web Development\\Next\\docrivo\\src\\components\\history-list.tsx": {
+    "mtime": 1783449085.5951786,
+    "hash": "6163b183d337599727cf8086f6514218"
+  },
+  "C:\\Coding\\Web Development\\Next\\docrivo\\src\\components\\home-generator.tsx": {
+    "mtime": 1783447338.689813,
+    "hash": "8ad16a8063b078480b8e63cc55bed3a7"
+  },
+  "C:\\Coding\\Web Development\\Next\\docrivo\\src\\components\\html-scraper.tsx": {
+    "mtime": 1783590275.232459,
+    "hash": "195886ae80b9e7625962bc35c160d0fa"
+  },
+  "C:\\Coding\\Web Development\\Next\\docrivo\\src\\components\\reveal.tsx": {
+    "mtime": 1783418670.0032153,
+    "hash": "0315fac37272df0df799699aabf8aa43"
+  },
+  "C:\\Coding\\Web Development\\Next\\docrivo\\src\\components\\site-footer.tsx": {
+    "mtime": 1783418670.0042276,
+    "hash": "3cf4c13b3d9aec6cd2079756c47ca52c"
+  },
+  "C:\\Coding\\Web Development\\Next\\docrivo\\src\\components\\site-header.tsx": {
+    "mtime": 1783449052.5623116,
+    "hash": "6c0c5be3152398f519c709a909880104"
+  },
+  "C:\\Coding\\Web Development\\Next\\docrivo\\src\\components\\topographic.tsx": {
+    "mtime": 1783418670.0075586,
+    "hash": "79fdbecd94e43e74574c00b058c80eb6"
+  },
+  "C:\\Coding\\Web Development\\Next\\docrivo\\src\\components\\typing-headline.tsx": {
+    "mtime": 1783418670.0095596,
+    "hash": "e394c55b098ad77dc8f903b594f01bf2"
+  },
+  "C:\\Coding\\Web Development\\Next\\docrivo\\src\\lib\\ai-provider.test.ts": {
+    "mtime": 1783452618.1187506,
+    "hash": "14d85e588f9cb942b6cf66ebe54f4b4f"
+  },
+  "C:\\Coding\\Web Development\\Next\\docrivo\\src\\lib\\ai-provider.ts": {
+    "mtime": 1783452611.5932913,
+    "hash": "8cf75c3edd2ed46aebd179e8b80fc442"
+  },
+  "C:\\Coding\\Web Development\\Next\\docrivo\\src\\lib\\errors.ts": {
+    "mtime": 1783418670.0135622,
+    "hash": "87156d4ee1ecdd3645f5940ab5c8f92a"
+  },
+  "C:\\Coding\\Web Development\\Next\\docrivo\\src\\lib\\fetch-html.test.ts": {
+    "mtime": 1783452661.2236621,
+    "hash": "bd01a8b5dde36ce6de8eab513042d456"
+  },
+  "C:\\Coding\\Web Development\\Next\\docrivo\\src\\lib\\fetch-html.ts": {
+    "mtime": 1783590221.5398636,
+    "hash": "e23c34e737ed997a3912a5585018606e"
+  },
+  "C:\\Coding\\Web Development\\Next\\docrivo\\src\\lib\\history.ts": {
+    "mtime": 1783449027.4565327,
+    "hash": "fbc1ce1fe4639c9c6f6e8be9029c7ecb"
+  },
+  "C:\\Coding\\Web Development\\Next\\docrivo\\src\\lib\\insforge-core.ts": {
+    "mtime": 1783418670.0175598,
+    "hash": "1c8a0eb79e9299b5ec64b4c2cca60e48"
+  },
+  "C:\\Coding\\Web Development\\Next\\docrivo\\src\\lib\\insforge.ts": {
+    "mtime": 1783318544.6497586,
+    "hash": "34d3daa7dd87ce0a46520f4821bbbfee"
+  },
+  "C:\\Coding\\Web Development\\Next\\docrivo\\src\\lib\\preview-html.test.ts": {
+    "mtime": 1783431242.0992568,
+    "hash": "c524675d51441f224e10d0b9d0de0e16"
+  },
+  "C:\\Coding\\Web Development\\Next\\docrivo\\src\\lib\\preview-html.ts": {
+    "mtime": 1783450462.4381814,
+    "hash": "0c6a7a72ded77cd21c8c7eb35a2517c6"
+  },
+  "C:\\Coding\\Web Development\\Next\\docrivo\\src\\lib\\rate-limit.ts": {
+    "mtime": 1783317954.9310577,
+    "hash": "aea0efc50ab4d4c1fb54255e281a7348"
+  },
+  "C:\\Coding\\Web Development\\Next\\docrivo\\src\\lib\\render-page.test.ts": {
+    "mtime": 1783449429.0712092,
+    "hash": "7405711ff7aa68a7eaa3a3ad20e3f1bd"
+  },
+  "C:\\Coding\\Web Development\\Next\\docrivo\\src\\lib\\render-page.ts": {
+    "mtime": 1783582144.1726072,
+    "hash": "f864dd2583ef16785da2bd0d883ce334"
+  },
+  "C:\\Coding\\Web Development\\Next\\docrivo\\src\\lib\\types.ts": {
+    "mtime": 1783418670.0225601,
+    "hash": "aff9da49f8123a625837fd8aebc7e2f1"
+  },
+  "C:\\Coding\\Web Development\\Next\\docrivo\\src\\lib\\url-validator.test.ts": {
+    "mtime": 1783313521.5458694,
+    "hash": "7b6216c66f332ab932189a0ccd1ed3e9"
+  },
+  "C:\\Coding\\Web Development\\Next\\docrivo\\src\\lib\\url-validator.ts": {
+    "mtime": 1783317790.3859873,
+    "hash": "3b1a9823d0b5010c80933d784a4c2611"
+  },
+  "C:\\Coding\\Web Development\\Next\\docrivo\\worker\\index.ts": {
+    "mtime": 1783580891.6126301,
+    "hash": "2e34090e4d998e70d11a8dd21694179e"
+  },
+  "C:\\Coding\\Web Development\\Next\\docrivo\\AGENTS.md": {
+    "mtime": 1783311302.4369676,
+    "hash": "2fe78bdeb49ebf8724e2ceabd4fd1f43"
+  },
+  "C:\\Coding\\Web Development\\Next\\docrivo\\CLAUDE.md": {
+    "mtime": 1783310615.0350907,
+    "hash": "5c27369b226fcf2be8a6cfe52224e767"
+  },
+  "C:\\Coding\\Web Development\\Next\\docrivo\\README.md": {
+    "mtime": 1783418669.9683304,
+    "hash": "c5018801b08e692451784847f046a12a"
+  },
+  "C:\\Coding\\Web Development\\Next\\docrivo\\TODO.md": {
+    "mtime": 1783583794.6612103,
+    "hash": "4b1e6155ef7d24c97cbeab7f8982009b"
+  },
+  "C:\\Coding\\Web Development\\Next\\docrivo\\docs\\Acceptance_Criteria_DesignMD_Generator.md": {
+    "mtime": 1783586513.1167705,
+    "hash": "e55e22b02211d2f566ca891b8a691dfe"
+  },
+  "C:\\Coding\\Web Development\\Next\\docrivo\\docs\\CONTOHDESIGNMDYANGDIGENERATE.md": {
+    "mtime": 1783586513.1177313,
+    "hash": "4a1fbd9742a13b025d0824de881faa3b"
+  },
+  "C:\\Coding\\Web Development\\Next\\docrivo\\docs\\DESIGN.md": {
+    "mtime": 1783586513.1187234,
+    "hash": "381d353aab837e347e0ef9203fa702b4"
+  },
+  "C:\\Coding\\Web Development\\Next\\docrivo\\docs\\PRD_DesignMD_Generator.md": {
+    "mtime": 1783586513.1197028,
+    "hash": "5c5f1c49e9f0b7c800a4aba24616db4f"
+  },
+  "C:\\Coding\\Web Development\\Next\\docrivo\\docs\\PRD_Scrape_Preview_Attempt_Consistency.md": {
+    "mtime": 1783611985.309125,
+    "hash": "7d6c0336e99e4d71691f424d0713b86c"
+  },
+  "C:\\Coding\\Web Development\\Next\\docrivo\\public\\file.svg": {
+    "mtime": 1783310489.359656,
+    "hash": "d09f95206c3fa0bb9bd9fefabfd0ea71"
+  },
+  "C:\\Coding\\Web Development\\Next\\docrivo\\public\\globe.svg": {
+    "mtime": 1783310489.3666558,
+    "hash": "2aaafa6a49b6563925fe440891e32717"
+  },
+  "C:\\Coding\\Web Development\\Next\\docrivo\\public\\next.svg": {
+    "mtime": 1783310489.3756595,
+    "hash": "8e061864f388b47f33a1c3780831193e"
+  },
+  "C:\\Coding\\Web Development\\Next\\docrivo\\public\\vercel.svg": {
+    "mtime": 1783310489.3836596,
+    "hash": "c0af2f507b369b085b35ef4bbe3bcf1e"
+  },
+  "C:\\Coding\\Web Development\\Next\\docrivo\\public\\window.svg": {
+    "mtime": 1783310489.3906815,
+    "hash": "a2760511c65806022ad20adf74370ff3"
+  }
+}
