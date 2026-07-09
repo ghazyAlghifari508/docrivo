@@ -178,12 +178,14 @@ function ScrapeMetadata({ result }: { result: Scraped }) {
   });
   const sizeKb = Math.round(result.metadata.htmlBytes / 1024).toLocaleString("id-ID");
   const viewport = `${result.metadata.viewport.width}×${result.metadata.viewport.height}`;
+  const redirected = result.metadata.finalUrl !== result.sourceUrl;
   return (
     <dl className="grid gap-2 border-b border-ink bg-paper-white px-4 py-3 text-caption text-muted-gray sm:grid-cols-2 lg:grid-cols-4">
       <MetaItem label="Attempt" value={`#${result.metadata.attempt} · ${result.metadata.captureMode}`} />
       <MetaItem label="Viewport" value={viewport} />
       <MetaItem label="Diambil" value={captured} />
       <MetaItem label="HTML" value={`${sizeKb} KB`} />
+      {redirected && <MetaItem label="Final URL" value={result.metadata.finalUrl} />}
     </dl>
   );
 }
