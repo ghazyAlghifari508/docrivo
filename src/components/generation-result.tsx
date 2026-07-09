@@ -218,12 +218,20 @@ export function GenerationResult({
                 </button>
               ) : null}
               {job.result ? (
-                <a
-                  href={`/api/generations/${id}/download?type=design-md`}
-                  className="pressable inline-flex items-center gap-2 rounded-buttons border border-ink bg-lime-sprint px-3 py-2 text-caption font-medium text-ink shadow-hard"
-                >
-                  <DownloadSimple size={15} /> Download DESIGN.md
-                </a>
+                <>
+                  <a
+                    href={`/api/generations/${id}/download?type=design-md`}
+                    className="pressable inline-flex items-center gap-2 rounded-buttons border border-ink bg-lime-sprint px-3 py-2 text-caption font-medium text-ink shadow-hard"
+                  >
+                    <DownloadSimple size={15} /> Download DESIGN.md
+                  </a>
+                  <a
+                    href={`/api/generations/${id}/download?type=prompt-md`}
+                    className="pressable inline-flex items-center gap-2 rounded-buttons border border-ink bg-paper-white px-3 py-2 text-caption font-medium text-ink shadow-hard"
+                  >
+                    <DownloadSimple size={15} /> Download prompt
+                  </a>
+                </>
               ) : null}
             </div>
 

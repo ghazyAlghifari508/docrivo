@@ -1,6 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Playwright ships native binaries — keep it out of the server bundle so the
+  // route handler loads it via native require.
+  serverExternalPackages: ["playwright", "playwright-core"],
   async headers() {
     return [
       {

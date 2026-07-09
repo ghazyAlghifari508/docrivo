@@ -13,7 +13,7 @@ export async function GET(req: Request) {
 
   try {
     const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "local";
-    if (!(await rateLimit(`scrape-asset:${ip}`, 200))) return new NextResponse("Rate limited", { status: 429 });
+    if (!(await rateLimit(`scrape-asset:${ip}`, 1000))) return new NextResponse("Rate limited", { status: 429 });
 
     const { body, status, contentType } = await fetchAsset(target);
     return new NextResponse(status >= 400 ? "" : new Uint8Array(body), {

@@ -41,6 +41,9 @@ async function render(rawUrl: string, req: Request) {
         "Content-Security-Policy": PREVIEW_CSP,
         "Referrer-Policy": "no-referrer",
         "X-Content-Type-Options": "nosniff",
+        // Re-render live every request so re-scraping the same URL never serves a
+        // stale cached frame (the user re-submits precisely to get a fresh result).
+        "Cache-Control": "no-store, max-age=0",
       },
     });
   } catch (err) {

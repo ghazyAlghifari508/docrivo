@@ -2,6 +2,7 @@
 
 import { ArrowRight, GlobeHemisphereWest, Warning } from "@phosphor-icons/react";
 import { useState, type FormEvent } from "react";
+import { pushHistory } from "@/lib/history";
 
 export function GenerationForm({
   tone = "light",
@@ -33,6 +34,7 @@ export function GenerationForm({
         setError("DESIGN.md gagal dibuat. Pastikan link publik bisa dibuka, lalu coba lagi.");
         return;
       }
+      pushHistory({ kind: "generate", url: url.trim(), jobId: json.jobId });
       onCreated(json.jobId);
     } catch {
       setError("Jaringan bermasalah. Coba lagi sebentar lagi.");

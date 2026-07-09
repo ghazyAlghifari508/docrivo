@@ -111,7 +111,8 @@ describe("generateDesign", () => {
 
     const result = await generateDesign("https://example.com", extraction);
 
-    expect(result.implementationPrompt).toBe("");
+    expect(result.implementationPrompt).toContain("# Implementation Prompt");
+    expect(result.implementationPrompt).toContain(result.designMd);
     expect(result.designMd).toContain("## Tokens - Colors");
     expect(result.designMd).toContain("## Do's and Don'ts");
     expect(result.designMd).toContain("### Example Component Prompts");

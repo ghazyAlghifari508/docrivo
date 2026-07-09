@@ -2,6 +2,7 @@
 
 import { ArrowRight, GlobeHemisphereWest, Warning, DownloadSimple, CircleNotch, Code } from "@phosphor-icons/react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import { pushHistory } from "@/lib/history";
 
 type Scraped = { sourceUrl: string; status: number; html: string; blobUrl: string; previewUrl: string };
 type ResultView = "preview" | "code";
@@ -46,7 +47,9 @@ export function HtmlScraper() {
         return;
       }
       const blobUrl = URL.createObjectURL(new Blob([json.html], { type: "text/html" }));
-      const previewUrl = `/api/scrape/preview?url=${encodeURIComponent(url)}`;
+      // Cache-bust so a re-scrape of the same URL always loads a fresh iframe
+      // instead of the browser replaying the previous (possibly broken) render.
+      const previewUrl = `/api/scrape/preview?url=${encodeURIComponent(url)}&t=${Date.now()}`;
       if (!aliveRef.current) {
         URL.revokeObjectURL(blobUrl);
         return;
@@ -54,6 +57,7 @@ export function HtmlScraper() {
       blobRef.current = blobUrl;
       setView("preview");
       setResult({ ...json, blobUrl, previewUrl });
+      pushHistory({ kind: "scrape", url: json.sourceUrl ?? url.trim() });
     } catch {
       setError("Jaringan bermasalah. Coba lagi sebentar lagi.");
     } finally {
@@ -128,7 +132,7 @@ export function HtmlScraper() {
             ) : null}
           </div>
           {!result ? (
-            <div className="grid h-[75vh] place-items-center bg-paper-white p-8 text-center">
+            <div className="grid h-[calc(100dvh-150px)] min-h-[620px] place-items-center bg-paper-white p-8 text-center">
               <div>
                 <CircleNotch size={26} className="mx-auto animate-spin text-muted" aria-hidden="true" />
                 <p className="mt-4 text-body-sm font-medium text-ink">AI sedang melakukan scraping HTML…</p>
@@ -141,10 +145,10 @@ export function HtmlScraper() {
               src={result.previewUrl}
               sandbox="allow-scripts"
               referrerPolicy="no-referrer"
-              className="h-[75vh] w-full bg-paper-white"
+              className="h-[calc(100dvh-150px)] min-h-[620px] w-full bg-paper-white"
             />
           ) : (
-            <pre tabIndex={0} aria-label="Kode HTML hasil scrape" className="h-[75vh] overflow-auto bg-[#111] p-5 text-[12px] leading-5 text-paper-white">
+            <pre tabIndex={0} aria-label="Kode HTML hasil scrape" className="h-[calc(100dvh-150px)] min-h-[620px] overflow-auto bg-[#111] p-5 text-[12px] leading-5 text-paper-white">
               <code>{result.html}</code>
             </pre>
           )}

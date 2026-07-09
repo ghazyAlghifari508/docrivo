@@ -28,7 +28,7 @@ function proxied(rawUrl: string, base: string): string {
   }
 }
 
-function rewriteCssUrls(css: string, base: string): string {
+export function rewriteCssUrls(css: string, base: string): string {
   return css.replace(CSS_URL, (_m, quote, url) => `url(${quote}${proxied(url, base)}${quote})`);
 }
 
