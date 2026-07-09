@@ -19,6 +19,7 @@ type Job = {
   progress: number;
   errorMessage?: string;
   pagesAnalyzed: number;
+  createdAt: string;
   assets: Array<{ id: string; asset_type: string; source_url: string; filename?: string; status: string }>;
   pages: Array<{ id: string; url: string; title?: string; screenshot_desktop_url?: string }>;
   result: null | { designMd: string; implementationPrompt: string };
@@ -137,6 +138,12 @@ export function GenerationResult({
     );
   }
 
+  const elapsed = timeSince(job.createdAt);
+  const curStage = Math.max(0, STAGES.indexOf(job.status));
+  const stageWeight = curStage / STAGES.length;
+  const estimatedTotal = stageWeight > 0.05 ? Math.round(elapsed / stageWeight) : 0;
+  const remaining = Math.max(0, estimatedTotal - elapsed);
+
   const markdown = job.result?.designMd;
   const done = ["completed", "failed", "cancelled"].includes(job.status);
   const failed = job.status === "failed";
@@ -189,6 +196,11 @@ export function GenerationResult({
                   : "DESIGN.md siap ditempel ke AI coding assistant."
                 : `AI sedang ${STATUS_LABEL[job.status]?.toLowerCase() ?? "memproses"} halaman referensi…`}
             </p>
+            {!done && remaining > 30 && (
+              <p className="mt-1 text-caption text-paper-white/40">
+                Estimasi sisa {remaining >= 120 ? `${Math.round(remaining / 60)} menit` : `${remaining} detik`}
+              </p>
+            )}
             {failed ? <Retry id={id} onRetry={onRetry} /> : null}
           </div>
         </div>
@@ -307,6 +319,11 @@ function Metric({ title, value }: { title: string; value: string }) {
       <p className="mt-2 text-heading font-semibold tabular-nums tracking-heading">{value}</p>
     </div>
   );
+}
+
+/** Seconds elapsed since an ISO-8601 timestamp. */
+function timeSince(iso: string): number {
+  return Math.round((Date.now() - new Date(iso).getTime()) / 1000);
 }
 
 /** Label with animated dots: "." → ".." → "..." cyclically. */

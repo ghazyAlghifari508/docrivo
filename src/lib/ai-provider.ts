@@ -7,8 +7,8 @@ function client() {
   return new OpenAI({
     apiKey: process.env.NVIDIA_API_KEY!,
     baseURL: "https://integrate.api.nvidia.com/v1",
-    timeout: 90_000, // hung model → fail fast, fall through to next
-    maxRetries: 1,
+    timeout: 180_000, // hangs → fail fast, fall through to next
+    maxRetries: 2,
   });
 }
 
@@ -245,12 +245,12 @@ function countPrompts(text: string) {
 }
 
 async function complete(user: string): Promise<string> {
-  // Fallbacks are all real NIM models, fast + English-only, verified live.
+  // Fallbacks are all real NIM models (with enough capacity for 12K+ char DESIGN.md).
+  // ponytail: 8B removed — always truncated at 10K+ tokens, wasted retry cycle.
   const models = [
     DEFAULT_MODEL,
     process.env.AI_MODEL,
     "meta/llama-3.1-70b-instruct",
-    "meta/llama-3.1-8b-instruct",
   ].filter((model, index, all): model is string => Boolean(model) && all.indexOf(model) === index);
 
   let lastError: unknown;
@@ -263,7 +263,7 @@ async function complete(user: string): Promise<string> {
           { role: "user", content: user },
         ],
         temperature: 0.25,
-        max_tokens: 10_000,
+        max_tokens: 16_384, // 12K+ char DESIGN.md needs room
       });
       const choice = res.choices[0];
       if (choice?.finish_reason === "length") throw new Error("AI output truncated");
