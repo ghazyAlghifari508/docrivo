@@ -43,7 +43,7 @@ We'll know we're right when **users can verify which attempt they are viewing, p
 | # | Milestone | Outcome | Status | Plan |
 |---|---|---|---|---|
 | 1 | Single captured scrape artifact | Users see preview, code, and download from the same scrape result | complete | [.claude/plans/scrape-preview-attempt-consistency.plan.md](../.claude/plans/scrape-preview-attempt-consistency.plan.md) |
-| 2 | Attempt metadata visibility | Users can inspect final URL, capture time, viewport, HTML size, and attempt number | pending | — |
+| 2 | Attempt metadata visibility | Users can inspect final URL, capture time, viewport, HTML size, and attempt number | complete | — |
 | 3 | Meaningful retry behavior | Users understand whether a retry changed capture conditions or repeated a deterministic attempt | pending | — |
 | 4 | Supabase desktop validation | Supabase scrape no longer silently appears as an unexplained hamburger/tablet result | pending | — |
 
