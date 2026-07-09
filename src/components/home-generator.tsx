@@ -44,7 +44,7 @@ export function HomeGenerator() {
           ) : null}
         </>
       ) : (
-        <div className="mx-auto w-full max-w-5xl">
+        <div className="mx-[calc(50%_-_50vw)] w-screen px-3 sm:px-5">
           <HtmlScraper />
         </div>
       )}

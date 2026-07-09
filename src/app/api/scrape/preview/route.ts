@@ -10,7 +10,7 @@ export const runtime = "nodejs";
 // Assets are same-origin via the proxy ('self'); inline+eval scripts kept so JS animations run.
 // The iframe sandbox (no allow-same-origin) is what actually isolates this untrusted HTML.
 const PREVIEW_CSP =
-  "default-src 'self' data: blob:; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:; connect-src 'self' data: blob:; frame-src 'self' data: blob:; base-uri 'none'; form-action 'none'; object-src 'none'; frame-ancestors 'self'";
+  "sandbox allow-scripts; default-src 'self' data: blob:; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; style-src-elem 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:; script-src-elem 'self' 'unsafe-inline' blob:; connect-src 'self' data: blob:; frame-src 'self' data: blob:; base-uri 'none'; form-action 'none'; object-src 'none'; frame-ancestors 'self'";
 
 const Body = z.object({ url: z.string().min(1) });
 
@@ -41,6 +41,9 @@ async function render(rawUrl: string, req: Request) {
         "Content-Security-Policy": PREVIEW_CSP,
         "Referrer-Policy": "no-referrer",
         "X-Content-Type-Options": "nosniff",
+        // Re-render live every request so re-scraping the same URL never serves a
+        // stale cached frame (the user re-submits precisely to get a fresh result).
+        "Cache-Control": "no-store, max-age=0",
       },
     });
   } catch (err) {

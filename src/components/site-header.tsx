@@ -3,6 +3,7 @@ import { ArrowRight } from "@phosphor-icons/react/dist/ssr";
 
 const NAV = [
   ["Home", "/"],
+  ["History", "/history"],
   ["About", "/about"],
   ["Bantuan", "/bantuan"],
   ["FAQ", "/faq"],

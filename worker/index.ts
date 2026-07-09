@@ -3,8 +3,8 @@ config({ path: ".env.local" });
 import { chromium, type Page } from "playwright";
 import { generateDesign } from "../src/lib/ai-provider";
 import { AppError } from "../src/lib/errors";
-import { fetchHtml, inlineStyles } from "../src/lib/fetch-html";
 import { insforge } from "../src/lib/insforge-core";
+import { BROWSER_UA, DESKTOP_VIEWPORT, guardContext } from "../src/lib/render-page";
 import { validateUrl } from "../src/lib/url-validator";
 import type { DesignExtraction, GenerationJob } from "../src/lib/types";
 
@@ -100,14 +100,21 @@ async function crawl(browser: Awaited<ReturnType<typeof chromium.launch>>, job: 
     const { normalized: url } = await validateUrl(rawUrl);
     seen.add(url);
 
-    const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
-    await context.route("**/*", (route) => route.abort());
+    const context = await browser.newContext({
+      viewport: DESKTOP_VIEWPORT,
+      userAgent: BROWSER_UA,
+      locale: "en-US",
+      ignoreHTTPSErrors: true,
+      serviceWorkers: "block",
+    });
+    await guardContext(context);
     const page = await context.newPage();
+    let statusCode = 200;
     try {
-      const fetched = await fetchHtml(url);
-      const html = await inlineStyles(fetched.html, url);
-      await page.setContent(html, { waitUntil: "domcontentloaded", timeout: 25_000 });
-      await page.evaluate("globalThis.__name = (fn) => fn");
+      const res = await page.goto(url, { waitUntil: "domcontentloaded", timeout: 35_000 });
+      statusCode = res?.status() ?? 200;
+      await page.waitForLoadState("networkidle", { timeout: 8_000 }).catch(() => {});
+      await page.waitForTimeout(600);
       const pageTitle = await page.title();
       title ||= pageTitle;
       description ||= await page.locator('meta[name="description"]').getAttribute("content").catch(() => "") ?? "";
@@ -160,7 +167,7 @@ async function crawl(browser: Awaited<ReturnType<typeof chromium.launch>>, job: 
             job_id: job.id,
             url,
             title: pageTitle,
-            status_code: fetched.status,
+            status_code: statusCode,
             screenshot_desktop_url: screenshotUrl,
           },
         ], "id"),
