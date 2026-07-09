@@ -4,7 +4,22 @@ import { ArrowRight, GlobeHemisphereWest, Warning, DownloadSimple, CircleNotch, 
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { pushHistory } from "@/lib/history";
 
-type Scraped = { sourceUrl: string; status: number; html: string; blobUrl: string; previewUrl: string };
+type Scraped = {
+  sourceUrl: string;
+  status: number;
+  html: string;
+  previewHtml: string;
+  blobUrl: string;
+  metadata: {
+    attempt: number;
+    capturedAt: string;
+    finalUrl: string;
+    viewport: { width: number; height: number };
+    captureMode: string;
+    htmlBytes: number;
+    previewHtmlBytes: number;
+  };
+};
 type ResultView = "preview" | "code";
 
 export function HtmlScraper() {
@@ -47,16 +62,13 @@ export function HtmlScraper() {
         return;
       }
       const blobUrl = URL.createObjectURL(new Blob([json.html], { type: "text/html" }));
-      // Cache-bust so a re-scrape of the same URL always loads a fresh iframe
-      // instead of the browser replaying the previous (possibly broken) render.
-      const previewUrl = `/api/scrape/preview?url=${encodeURIComponent(url)}&t=${Date.now()}`;
       if (!aliveRef.current) {
         URL.revokeObjectURL(blobUrl);
         return;
       }
       blobRef.current = blobUrl;
       setView("preview");
-      setResult({ ...json, blobUrl, previewUrl });
+      setResult({ ...json, blobUrl });
       pushHistory({ kind: "scrape", url: json.sourceUrl ?? url.trim() });
     } catch {
       setError("Jaringan bermasalah. Coba lagi sebentar lagi.");
@@ -131,6 +143,7 @@ export function HtmlScraper() {
               </div>
             ) : null}
           </div>
+          {result ? <ScrapeMetadata result={result} /> : null}
           {!result ? (
             <div className="grid h-[calc(100dvh-150px)] min-h-[620px] place-items-center bg-paper-white p-8 text-center">
               <div>
@@ -142,7 +155,7 @@ export function HtmlScraper() {
           ) : view === "preview" ? (
             <iframe
               title={`Preview ${result.sourceUrl}`}
-              src={result.previewUrl}
+              srcDoc={result.previewHtml}
               sandbox="allow-scripts"
               referrerPolicy="no-referrer"
               className="h-[calc(100dvh-150px)] min-h-[620px] w-full bg-paper-white"
@@ -154,6 +167,32 @@ export function HtmlScraper() {
           )}
         </section>
       ) : null}
+    </div>
+  );
+}
+
+function ScrapeMetadata({ result }: { result: Scraped }) {
+  const captured = new Date(result.metadata.capturedAt).toLocaleString("id-ID", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+  const sizeKb = Math.round(result.metadata.htmlBytes / 1024).toLocaleString("id-ID");
+  const viewport = `${result.metadata.viewport.width}×${result.metadata.viewport.height}`;
+  return (
+    <dl className="grid gap-2 border-b border-ink bg-paper-white px-4 py-3 text-caption text-muted-gray sm:grid-cols-2 lg:grid-cols-4">
+      <MetaItem label="Attempt" value={`#${result.metadata.attempt} · ${result.metadata.captureMode}`} />
+      <MetaItem label="Viewport" value={viewport} />
+      <MetaItem label="Diambil" value={captured} />
+      <MetaItem label="HTML" value={`${sizeKb} KB`} />
+    </dl>
+  );
+}
+
+function MetaItem({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0">
+      <dt className="font-medium text-muted">{label}</dt>
+      <dd className="truncate">{value}</dd>
     </div>
   );
 }

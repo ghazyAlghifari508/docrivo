@@ -1,6 +1,7 @@
 import http from "node:http";
 import https from "node:https";
 import { AppError } from "./errors";
+import { rewritePreviewAssets } from "./preview-html";
 import { validateUrl } from "./url-validator";
 
 const MAX_HTML_BYTES = 5_000_000;
@@ -67,15 +68,28 @@ export async function fetchAsset(
 }
 
 export async function scrapeHtml(rawUrl: string) {
-  const { normalized } = await validateUrl(rawUrl);
+  const { url } = await validateUrl(rawUrl);
   // Render in a real browser so client-rendered sites (React/Next/Framer/GSAP)
   // yield full DOM + assets, not the empty pre-JS shell a raw fetch returns.
-  const { renderPage } = await import("./render-page");
-  const rendered = await renderPage(normalized);
+  const { renderPage, DESKTOP_VIEWPORT } = await import("./render-page");
+  const rendered = await renderPage(url.href);
+  const capturedAt = new Date().toISOString();
+  const html = withBaseHref(await inlineStyles(rendered.html, rendered.finalUrl), rendered.finalUrl);
+  const previewHtml = rewritePreviewAssets(html, rendered.finalUrl);
   return {
     sourceUrl: rendered.finalUrl,
     status: rendered.status,
-    html: withBaseHref(await inlineStyles(rendered.html, rendered.finalUrl), rendered.finalUrl),
+    html,
+    previewHtml,
+    metadata: {
+      attempt: 1,
+      capturedAt,
+      finalUrl: rendered.finalUrl,
+      viewport: DESKTOP_VIEWPORT,
+      captureMode: "desktop-browser",
+      htmlBytes: Buffer.byteLength(html, "utf8"),
+      previewHtmlBytes: Buffer.byteLength(previewHtml, "utf8"),
+    },
   };
 }
 
