@@ -78,14 +78,14 @@ Website referensi
         </button>
       </div>
 
-      <div className="mt-3 flex items-center gap-2">
+      <div className="mt-3 flex items-center justify-center gap-2">
         {error ? (
           <p id={errorId} role="alert" className="inline-flex items-center gap-1.5 text-caption font-medium text-red-700">
             <Warning size={15} weight="fill" aria-hidden="true" />
             {error}
           </p>
         ) : (
-          <p id={helperId} className={`text-caption ${dark ? "text-paper-white/60" : "text-muted-gray"}`}>
+          <p id={helperId} className={`text-caption text-center ${dark ? "text-paper-white/60" : "text-muted-gray"}`}>
             Tempel website publik yang style-nya ingin kamu jadikan instruksi untuk AI coding assistant.
           </p>
         )}
