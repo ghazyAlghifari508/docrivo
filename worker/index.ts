@@ -10,7 +10,7 @@ import type { DesignExtraction, GenerationJob } from "../src/lib/types";
 
 const POLL_MS = Number(process.env.WORKER_POLL_MS ?? 2000);
 
-async function main() {
+export async function main() {
   console.log(`[worker] polling every ${POLL_MS}ms`);
   for (;;) {
     try {
@@ -23,7 +23,17 @@ async function main() {
   }
 }
 
-async function processJob(job: GenerationJob) {
+export async function claimJob(jobId: string): Promise<GenerationJob | null> {
+  const [claimed] = await insforge.update<GenerationJob>("generation_jobs", { id: jobId, status: "queued" }, {
+    status: "crawling",
+    progress: 20,
+    started_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  });
+  return claimed ?? null;
+}
+
+export async function processJob(job: GenerationJob) {
   try {
     await log(job.id, "info", "job_started", job.source_url);
     const browser = await chromium.launch({ headless: true });
@@ -370,7 +380,7 @@ function shouldSkip(url: string) {
   return /\b(login|signin|signup|register|account|checkout|cart|payment|admin)\b/i.test(url);
 }
 
-async function claimNextJob(): Promise<GenerationJob | null> {
+export async function claimNextJob(): Promise<GenerationJob | null> {
   const result = await insforge.rpc<GenerationJob | GenerationJob[] | null>("claim_next_job");
   if (Array.isArray(result)) return result[0] ?? null;
   return result?.id ? result : null;
@@ -429,7 +439,9 @@ function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+if (process.argv[1]?.replaceAll("\\", "/").endsWith("worker/index.ts")) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}

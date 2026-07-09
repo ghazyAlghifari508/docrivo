@@ -90,12 +90,13 @@ function HistoryRow({ entry }: { entry: HistoryEntry }) {
         </p>
       </div>
       <span className="shrink-0 text-caption text-muted-gray">{timeAgo(entry.at)}</span>
-      {!isScrape && entry.jobId ? <ArrowRight size={16} className="shrink-0 text-muted" aria-hidden="true" /> : null}
+      {(!isScrape && entry.jobId) || (isScrape && entry.scrapeId) ? <ArrowRight size={16} className="shrink-0 text-muted" aria-hidden="true" /> : null}
     </div>
   );
 
-  // Generate entries deep-link to their result; scrape entries are informational
-  // (scrape output is a live blob, not a persisted record) so re-run from home.
+  if (isScrape && entry.scrapeId) {
+    return <Link href={`/history/scrapes/${entry.scrapeId}`}>{inner}</Link>;
+  }
   if (!isScrape && entry.jobId) {
     return <Link href={`/generations/${entry.jobId}`}>{inner}</Link>;
   }

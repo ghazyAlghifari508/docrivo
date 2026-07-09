@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { z } from "zod";
 import { AppError, ERROR_CODES } from "@/lib/errors";
 import { insforge } from "@/lib/insforge";
@@ -43,6 +43,12 @@ export async function POST(req: Request) {
       ],
       "id,status",
     );
+
+    after(() => {
+      void fetch(new URL("/api/worker/tick", req.url), { method: "POST" }).catch((err) => {
+        console.error("[api] worker tick failed", err);
+      });
+    });
 
     return NextResponse.json({ jobId: job.id, status: job.status });
   } catch (err) {

@@ -2,7 +2,7 @@
 
 import { ArrowRight, GlobeHemisphereWest, Warning, DownloadSimple, CircleNotch, Code } from "@phosphor-icons/react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { pushHistory, getHistory, type HistoryEntry } from "@/lib/history";
+import { pushHistory, getHistory, saveScrapeArtifact } from "@/lib/history";
 
 type Scraped = {
   sourceUrl: string;
@@ -63,15 +63,23 @@ export function HtmlScraper() {
         setError("Gagal mengambil HTML. Pastikan link publik bisa dibuka, lalu coba lagi.");
         return;
       }
-      const blobUrl = URL.createObjectURL(new Blob([json.html], { type: "text/html" }));
-      if (!aliveRef.current) {
-        URL.revokeObjectURL(blobUrl);
+      const scrapeId = await saveScrapeArtifact({
+        sourceUrl: json.sourceUrl,
+        status: json.status,
+        html: json.html,
+        previewHtml: json.previewHtml,
+        metadata: json.metadata,
+      });
+      if (!scrapeId) {
+        if (aliveRef.current) setError("HTML terlalu besar untuk disimpan di browser ini. Coba website yang lebih kecil.");
         return;
       }
+      pushHistory({ kind: "scrape", url: json.sourceUrl ?? targetUrl, scrapeId });
+      if (!aliveRef.current) return;
+      const blobUrl = URL.createObjectURL(new Blob([json.html], { type: "text/html" }));
       blobRef.current = blobUrl;
       setView("preview");
       setResult({ ...json, blobUrl });
-      pushHistory({ kind: "scrape", url: json.sourceUrl ?? url.trim() });
     } catch {
       setError("Jaringan bermasalah. Coba lagi sebentar lagi.");
     } finally {
