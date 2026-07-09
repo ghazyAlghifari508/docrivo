@@ -129,7 +129,9 @@ async function crawl(browser: Awaited<ReturnType<typeof chromium.launch>>, job: 
       title ||= pageTitle;
       description ||= await page.locator('meta[name="description"]').getAttribute("content").catch(() => "") ?? "";
 
-      await setStatus(job.id, "capturing");
+      // ponytail: page-weighted progress so the bar never bounces back
+      const pageProg = Math.min(78, Math.round(20 + (pages.length / job.max_pages) * 60));
+      await setStatus(job.id, "capturing", { progress: pageProg });
       const screenshot = await page.screenshot({ fullPage: true, type: "png" });
       const key = `${job.id}/${pages.length + 1}.png`;
       const uploaded = await insforge.uploadScreenshot(
@@ -386,12 +388,25 @@ export async function claimNextJob(): Promise<GenerationJob | null> {
   return result?.id ? result : null;
 }
 
+// Each job's highest-seen progress, monotonic so the bar never bounces back.
+const monotonicProgress = new Map<string, number>();
+
 async function setStatus(jobId: string, status: GenerationJob["status"], extra: Record<string, unknown> = {}) {
+  const stageProgress: Record<string, number> = { queued: 0, crawling: 20, capturing: 40, extracting: 60, generating: 80, completed: 100, failed: 100, cancelled: 100 };
+  // Use explicit progress from caller (per-page loop) else fall back to stage default.
+  let prog = (extra.progress as number | undefined) ?? stageProgress[status];
+  const { progress: _omit, ...rest } = extra as Record<string, unknown> & { progress?: number };
+  // Clamp to all-time high so progress is monotonic.
+  const prev = monotonicProgress.get(jobId) ?? 0;
+  if (prog < prev) prog = prev;
+  if (prog > prev) monotonicProgress.set(jobId, prog);
+  // Clear marker on terminal states so next job isn't capped.
+  if (["completed", "failed", "cancelled"].includes(status)) monotonicProgress.delete(jobId);
   await insforge.update("generation_jobs", { id: jobId }, {
     status,
-    progress: { queued: 0, crawling: 20, capturing: 40, extracting: 60, generating: 80, completed: 100, failed: 100, cancelled: 100 }[status],
+    progress: prog,
     updated_at: new Date().toISOString(),
-    ...extra,
+    ...rest,
   });
 }
 

@@ -164,7 +164,10 @@ export function GenerationResult({
           <div className="rounded-cards border border-paper-white/15 bg-paper-white/5 p-5">
             <div className="flex items-center justify-between text-caption text-paper-white/60">
               <span>Proses</span>
-              <span className="tabular-nums">{job.progress}%</span>
+              <span className="inline-flex items-center gap-1.5 tabular-nums">
+                {!done && <span className="inline-block size-3 rounded-full border-2 border-current border-t-transparent animate-spin" />}
+                {job.progress}%
+              </span>
             </div>
             <div
               role="progressbar"
@@ -184,7 +187,7 @@ export function GenerationResult({
                 ? failed
                   ? "Proses berhenti. Coba ulangi dari referensi yang sama."
                   : "DESIGN.md siap ditempel ke AI coding assistant."
-                : "Kami sedang membaca style website dan menyusun instruksi desain untuk AI."}
+                : `AI sedang ${STATUS_LABEL[job.status]?.toLowerCase() ?? "memproses"} halaman referensi…`}
             </p>
             {failed ? <Retry id={id} onRetry={onRetry} /> : null}
           </div>
