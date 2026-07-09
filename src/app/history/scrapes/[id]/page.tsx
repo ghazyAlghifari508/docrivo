@@ -12,7 +12,7 @@ export default async function ScrapeHistoryDetailPage({ params }: { params: Prom
   const { id } = await params;
   return (
     <>
-      <SiteHeader surface="depth" />
+      <SiteHeader />
       <ScrapeDetail id={id} />
       <SiteFooter />
     </>

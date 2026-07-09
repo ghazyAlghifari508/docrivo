@@ -23,31 +23,31 @@ export function HomeGenerator() {
         </TabButton>
       </div>
 
-      {tab === "design" ? (
-        <>
-          <div className="mx-auto max-w-2xl">
-            <GenerationForm onCreated={setJobId} />
-          </div>
-
-          {jobId ? (
-            <section className="mt-20 border-t border-rule bg-paper-white pt-16 text-left">
-              <div className="mb-8 text-center">
-                <span className="text-caption font-semibold uppercase tracking-[0.08em] text-muted-gray">
-                  DESIGN.md siap pakai
-                </span>
-                <h2 className="mt-3 text-heading font-semibold leading-heading tracking-heading">
-                  Tempel ke AI coding assistant agar hasil UI lebih <span className="emph">terarah</span>.
-                </h2>
-              </div>
-              <GenerationResult id={jobId} embedded onRetry={setJobId} />
-            </section>
-          ) : null}
-        </>
-      ) : (
-        <div className="mx-[calc(50%_-_50vw)] w-screen px-3 sm:px-5">
-          <HtmlScraper />
+      {/* Both panels stay mounted; hidden with CSS so switching tabs never drops
+          an in-flight scrape/generate or its result. */}
+      <div hidden={tab !== "design"}>
+        <div className="mx-auto max-w-2xl">
+          <GenerationForm onCreated={setJobId} />
         </div>
-      )}
+
+        {jobId ? (
+          <section className="mt-20 border-t border-rule bg-paper-white pt-16 text-left">
+            <div className="mb-8 text-center">
+              <span className="text-caption font-semibold uppercase tracking-[0.08em] text-muted-gray">
+                DESIGN.md siap pakai
+              </span>
+              <h2 className="mt-3 text-heading font-semibold leading-heading tracking-heading">
+                Tempel ke AI coding assistant agar hasil UI lebih <span className="emph">terarah</span>.
+              </h2>
+            </div>
+            <GenerationResult id={jobId} embedded onRetry={setJobId} />
+          </section>
+        ) : null}
+      </div>
+
+      <div hidden={tab !== "scrape"} className="mx-[calc(50%_-_50vw)] w-screen px-3 sm:px-5">
+        <HtmlScraper />
+      </div>
     </>
   );
 }

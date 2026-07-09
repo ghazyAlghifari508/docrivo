@@ -6,7 +6,7 @@ export default async function GenerationPage({ params }: { params: Promise<{ id:
   const { id } = await params;
   return (
     <>
-      <SiteHeader surface="depth" />
+      <SiteHeader />
       <GenerationResult id={id} />
       <SiteFooter />
     </>
