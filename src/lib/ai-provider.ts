@@ -266,7 +266,7 @@ async function complete(user: string): Promise<string> {
         max_tokens: 16_384, // 12K+ char DESIGN.md needs room
       });
       const choice = res.choices[0];
-      if (choice?.finish_reason === "length") throw new Error("AI output truncated");
+      if (choice?.finish_reason === "length") throw new Error(`AI output truncated (model=${model})`);
       const text = choice?.message?.content?.trim();
       if (text) return text;
     } catch (err) {
@@ -274,5 +274,6 @@ async function complete(user: string): Promise<string> {
       console.error(`[ai] model failed: ${model}`, err);
     }
   }
-  throw new AppError("AI_GENERATION_FAILED", undefined, { cause: lastError });
+  // ponytail: string cause only — Node 20 crashes on raw Error cause for frozen errors
+  throw new AppError("AI_GENERATION_FAILED", undefined, { cause: (lastError as Error)?.message ?? String(lastError) });
 }

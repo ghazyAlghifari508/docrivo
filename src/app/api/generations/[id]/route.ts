@@ -27,7 +27,8 @@ export async function GET(
   if (job.status === "queued") {
     after(() => {
       void fetch(new URL("/api/worker/tick", req.url), { method: "POST" }).catch((err) => {
-        console.error("[api] worker tick failed", err);
+        if (err && (err as Error).message) console.error("[api] worker tick failed", (err as Error).message);
+        else console.error("[api] worker tick failed (no message)");
       });
     });
   }
