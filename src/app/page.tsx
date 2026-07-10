@@ -9,6 +9,8 @@ import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { Topographic } from "@/components/topographic";
 import { Reveal } from "@/components/reveal";
+import { getUser } from "@/lib/dal";
+import Link from "next/link";
 
 const CHIPS = [
   ["AI lebih nurut", ShieldCheck],
@@ -16,7 +18,9 @@ const CHIPS = [
   ["Bisa dipakai ulang", ArrowClockwise],
 ] as const;
 
-export default function Home() {
+export default async function Home() {
+  const user = await getUser();
+
   return (
     <>
       <SiteHeader />
@@ -41,7 +45,17 @@ export default function Home() {
             </Reveal>
 
             <Reveal delay={120} className="mx-auto mt-10 w-full">
-              <HomeGenerator />
+              {user ? (
+                <HomeGenerator />
+              ) : (
+                <Link
+                  href="/login"
+                  aria-label="Masuk dengan Google untuk menggunakan generator DESIGN.md dan Scrape HTML"
+                  className="pressable inline-flex h-12 items-center justify-center rounded-buttons border border-ink bg-lime-sprint px-6 text-body-sm font-medium text-ink shadow-hard"
+                >
+                  Masuk dengan Google
+                </Link>
+              )}
             </Reveal>
 
             <Reveal delay={220} className="mx-auto mt-8 flex max-w-xl flex-wrap items-center justify-center gap-x-6 gap-y-2 text-caption text-muted-gray">

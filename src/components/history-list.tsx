@@ -1,9 +1,22 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { ArrowRight, Code, FileMd, GlobeHemisphereWest, Trash, Warning } from "@phosphor-icons/react";
-import { getHistory, clearHistory, removeHistoryEntry, type HistoryEntry } from "@/lib/history";
+
+type GenerationItem = { id: string; url: string; status: string; at: number };
+type ScrapeItem = { id: string; url: string; at: number };
+
+const STATUS_LABEL: Record<string, string> = {
+  queued: "Menunggu",
+  crawling: "Membaca",
+  capturing: "Menangkap",
+  extracting: "Merangkum",
+  generating: "Menyusun",
+  completed: "Selesai",
+  failed: "Gagal",
+  cancelled: "Dibatalkan",
+};
 
 function timeAgo(ts: number): string {
   const s = Math.floor((Date.now() - ts) / 1000);
@@ -15,33 +28,39 @@ function timeAgo(ts: number): string {
   return `${Math.floor(h / 24)} hari lalu`;
 }
 
-export function HistoryList() {
-  const [items, setItems] = useState<HistoryEntry[] | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState<HistoryEntry | null>(null);
+export function HistoryList({ generations, scrapes }: { generations: GenerationItem[]; scrapes: ScrapeItem[] }) {
+  const [confirmDelete, setConfirmDelete] = useState<{ id: string; kind: "scrape" | "generate" } | null>(null);
+  const [confirmClear, setConfirmClear] = useState(false);
+  const [items, setItems] = useState<{ generations: GenerationItem[]; scrapes: ScrapeItem[] }>({
+    generations,
+    scrapes,
+  });
 
-  useEffect(() => {
-    const sync = () => setItems(getHistory());
-    sync();
-    window.addEventListener("docrivo:history", sync);
-    window.addEventListener("storage", sync);
-    return () => {
-      window.removeEventListener("docrivo:history", sync);
-      window.removeEventListener("storage", sync);
-    };
-  }, []);
+  const total = items.generations.length + items.scrapes.length;
 
-  const handleDelete = useCallback(() => {
+  const handleDelete = useCallback(async () => {
     if (!confirmDelete) return;
-    removeHistoryEntry(confirmDelete.id);
-    setItems(getHistory());
+    const path = confirmDelete.kind === "scrape" ? `/api/scrapes/${confirmDelete.id}` : `/api/generations/${confirmDelete.id}`;
+    const res = await fetch(path, { method: "DELETE" });
+    if (res.ok) {
+      setItems((prev) => ({
+        generations: prev.generations.filter((g) => !(confirmDelete.kind === "generate" && g.id === confirmDelete.id)),
+        scrapes: prev.scrapes.filter((s) => !(confirmDelete.kind === "scrape" && s.id === confirmDelete.id)),
+      }));
+    }
     setConfirmDelete(null);
   }, [confirmDelete]);
 
-  if (items === null) {
-    return <p className="text-body-sm text-muted-gray">Memuat riwayat…</p>;
-  }
+  const handleClear = useCallback(async () => {
+    await Promise.all([
+      ...items.generations.map((g) => fetch(`/api/generations/${g.id}`, { method: "DELETE" })),
+      ...items.scrapes.map((s) => fetch(`/api/scrapes/${s.id}`, { method: "DELETE" })),
+    ]);
+    setItems({ generations: [], scrapes: [] });
+    setConfirmClear(false);
+  }, [items]);
 
-  if (!items.length) {
+  if (total === 0) {
     return (
       <div className="rounded-cards border border-rule bg-cream p-8 text-center">
         <p className="text-body-sm font-medium text-ink">Belum ada riwayat.</p>
@@ -61,9 +80,9 @@ export function HistoryList() {
   return (
     <div>
       <div className="mb-4 flex items-center justify-between">
-        <span className="text-caption text-muted-gray">{items.length} riwayat tersimpan di browser ini</span>
+        <span className="text-caption text-muted-gray">{total} riwayat tersimpan</span>
         <button
-          onClick={() => clearHistory()}
+          onClick={() => setConfirmClear(true)}
           className="inline-flex items-center gap-1.5 rounded-buttons border border-ink bg-paper-white px-3 py-1.5 text-caption font-medium text-ink shadow-hard"
         >
           <Trash size={14} /> Hapus semua
@@ -71,59 +90,48 @@ export function HistoryList() {
       </div>
 
       <ul className="space-y-3">
-        {items.map((it) => (
+        {items.generations.map((it) => (
           <li key={it.id} className="group relative">
-            <HistoryRow entry={it} onDelete={() => setConfirmDelete(it)} />
+            <GenerationRow entry={it} onDelete={() => setConfirmDelete({ id: it.id, kind: "generate" })} />
+          </li>
+        ))}
+        {items.scrapes.map((it) => (
+          <li key={it.id} className="group relative">
+            <ScrapeRow entry={it} onDelete={() => setConfirmDelete({ id: it.id, kind: "scrape" })} />
           </li>
         ))}
       </ul>
 
-      {/* Confirm delete modal */}
       {confirmDelete ? (
-        <div
-          className="fixed inset-0 z-50 grid place-items-center bg-black/40 px-4"
-          onClick={() => setConfirmDelete(null)}
-        >
-          <div
-            className="w-full max-w-sm rounded-cards border border-ink bg-paper-white p-6 shadow-hard-xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <span className="mx-auto grid size-12 place-items-center rounded-buttons border border-ink bg-cream shadow-hard">
-              <Warning size={22} weight="fill" aria-hidden="true" />
-            </span>
-            <p className="mt-5 text-center text-body-sm font-semibold text-ink">Yakin ingin hapus riwayat ini?</p>
-            <p className="mt-2 text-center text-caption text-muted-gray">Riwayat akan dihapus dari browser ini dan tidak bisa dikembalikan.</p>
-            <div className="mt-6 flex gap-3">
-              <button
-                onClick={() => setConfirmDelete(null)}
-                className="flex-1 rounded-buttons border border-ink bg-paper-white px-4 py-2.5 text-body-sm font-medium text-ink shadow-hard"
-              >
-                Batal
-              </button>
-              <button
-                onClick={handleDelete}
-                className="flex-1 rounded-buttons border border-ink bg-red-500 px-4 py-2.5 text-body-sm font-medium text-paper-white shadow-hard"
-              >
-                Hapus
-              </button>
-            </div>
-          </div>
-        </div>
+        <Modal
+          title="Yakin ingin hapus riwayat ini?"
+          onCancel={() => setConfirmDelete(null)}
+          onConfirm={handleDelete}
+        />
+      ) : null}
+      {confirmClear ? (
+        <Modal
+          title="Yakin ingin hapus semua riwayat?"
+          onCancel={() => setConfirmClear(false)}
+          onConfirm={handleClear}
+        />
       ) : null}
     </div>
   );
 }
 
-function HistoryRow({ entry, onDelete }: { entry: HistoryEntry; onDelete: () => void }) {
-  const isScrape = entry.kind === "scrape";
-  const inner = (
-    <div className="flex items-center gap-3 rounded-cards border border-ink bg-paper-white p-4 shadow-hard">
+function GenerationRow({ entry, onDelete }: { entry: GenerationItem; onDelete: () => void }) {
+  return (
+    <Link href={`/generations/${entry.id}`} className="flex items-center gap-3 rounded-cards border border-ink bg-paper-white p-4 shadow-hard">
       <span className="grid size-10 shrink-0 place-items-center rounded-buttons border border-ink bg-lime-sprint">
-        {isScrape ? <Code size={18} weight="fill" aria-hidden="true" /> : <FileMd size={18} weight="fill" aria-hidden="true" />}
+        <FileMd size={18} weight="fill" aria-hidden="true" />
       </span>
       <div className="min-w-0 flex-1">
         <p className="flex items-center gap-1.5 text-caption font-semibold uppercase tracking-[0.06em] text-muted">
-          {isScrape ? "Scrape HTML" : "Generate DESIGN.md"}
+          Generate DESIGN.md
+          <span className="rounded-pills border border-rule px-2 py-0.5 text-[10px] text-muted-gray">
+            {STATUS_LABEL[entry.status] ?? entry.status}
+          </span>
         </p>
         <p className="mt-0.5 flex items-center gap-1.5 truncate text-body-sm font-medium text-ink">
           <GlobeHemisphereWest size={14} className="shrink-0 text-muted-gray" aria-hidden="true" />
@@ -134,19 +142,64 @@ function HistoryRow({ entry, onDelete }: { entry: HistoryEntry; onDelete: () => 
       <button
         aria-label="Hapus"
         onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDelete(); }}
-        className="shrink-0 text-muted-gray hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+        className="shrink-0 text-muted-gray opacity-0 group-hover:text-red-500 group-hover:opacity-100 transition-opacity hover:text-red-500"
       >
         <Trash size={16} />
       </button>
-      {(!isScrape && entry.jobId) || (isScrape && entry.scrapeId) ? <ArrowRight size={16} className="shrink-0 text-muted" aria-hidden="true" /> : null}
+      <ArrowRight size={16} className="shrink-0 text-muted" aria-hidden="true" />
+    </Link>
+  );
+}
+
+function ScrapeRow({ entry, onDelete }: { entry: ScrapeItem; onDelete: () => void }) {
+  return (
+    <Link href={`/history/scrapes/${entry.id}`} className="flex items-center gap-3 rounded-cards border border-ink bg-paper-white p-4 shadow-hard">
+      <span className="grid size-10 shrink-0 place-items-center rounded-buttons border border-ink bg-lime-sprint">
+        <Code size={18} weight="fill" aria-hidden="true" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="flex items-center gap-1.5 text-caption font-semibold uppercase tracking-[0.06em] text-muted">
+          Scrape HTML
+        </p>
+        <p className="mt-0.5 flex items-center gap-1.5 truncate text-body-sm font-medium text-ink">
+          <GlobeHemisphereWest size={14} className="shrink-0 text-muted-gray" aria-hidden="true" />
+          <span className="truncate">{entry.url}</span>
+        </p>
+      </div>
+      <span className="shrink-0 text-caption text-muted-gray">{timeAgo(entry.at)}</span>
+      <button
+        aria-label="Hapus"
+        onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDelete(); }}
+        className="shrink-0 text-muted-gray opacity-0 group-hover:text-red-500 group-hover:opacity-100 transition-opacity hover:text-red-500"
+      >
+        <Trash size={16} />
+      </button>
+      <ArrowRight size={16} className="shrink-0 text-muted" aria-hidden="true" />
+    </Link>
+  );
+}
+
+function Modal({ title, onCancel, onConfirm }: { title: string; onCancel: () => void; onConfirm: () => void }) {
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-black/40 px-4"
+      onClick={onCancel}
+    >
+      <div className="w-full max-w-sm rounded-cards border border-ink bg-paper-white p-6 shadow-hard-xl" onClick={(e) => e.stopPropagation()}>
+        <span className="mx-auto grid size-12 place-items-center rounded-buttons border border-ink bg-cream shadow-hard">
+          <Warning size={22} weight="fill" aria-hidden="true" />
+        </span>
+        <p className="mt-5 text-center text-body-sm font-semibold text-ink">{title}</p>
+        <p className="mt-2 text-center text-caption text-muted-gray">Riwayat akan dihapus dari akun Google kamu dan tidak bisa dikembalikan.</p>
+        <div className="mt-6 flex gap-3">
+          <button onClick={onCancel} className="flex-1 rounded-buttons border border-ink bg-paper-white px-4 py-2.5 text-body-sm font-medium text-ink shadow-hard">
+            Batal
+          </button>
+          <button onClick={onConfirm} className="flex-1 rounded-buttons border border-ink bg-red-500 px-4 py-2.5 text-body-sm font-medium text-paper-white shadow-hard">
+            Hapus
+          </button>
+        </div>
+      </div>
     </div>
   );
-
-  if (isScrape && entry.scrapeId) {
-    return <Link href={`/history/scrapes/${entry.scrapeId}`}>{inner}</Link>;
-  }
-  if (!isScrape && entry.jobId) {
-    return <Link href={`/generations/${entry.jobId}`}>{inner}</Link>;
-  }
-  return inner;
 }

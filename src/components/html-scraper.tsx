@@ -1,8 +1,8 @@
 "use client";
 
-import { ArrowRight, GlobeHemisphereWest, Warning, DownloadSimple, CircleNotch, Code } from "@phosphor-icons/react";
+import { ArrowRight, GlobeHemisphereWest, Warning, DownloadSimple, CircleNotch, Code, CaretDown, CaretUp } from "@phosphor-icons/react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { pushHistory, getHistory, saveScrapeArtifact, getScrapeArtifact, getActiveScrapeId, setActiveScrapeId } from "@/lib/history";
+import { getActiveScrapeId, setActiveScrapeId } from "@/lib/history";
 
 type Scraped = {
   sourceUrl: string;
@@ -28,6 +28,7 @@ export function HtmlScraper() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<Scraped | null>(null);
   const [view, setView] = useState<ResultView>("preview");
+  const [collapsed, setCollapsed] = useState(false);
   const blobRef = useRef("");
   const aliveRef = useRef(true);
 
@@ -45,12 +46,21 @@ export function HtmlScraper() {
     const activeId = getActiveScrapeId();
     if (!activeId) return;
     let alive = true;
-    getScrapeArtifact(activeId).then((artifact) => {
-      if (!alive || !aliveRef.current || !artifact) return;
-      const blobUrl = URL.createObjectURL(new Blob([artifact.html], { type: "text/html" }));
-      blobRef.current = blobUrl;
-      setResult({ ...artifact, blobUrl });
-    });
+    fetch(`/api/scrapes/${activeId}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((artifact) => {
+        if (!alive || !aliveRef.current || !artifact) return;
+        const blobUrl = URL.createObjectURL(new Blob([artifact.html], { type: "text/html" }));
+        blobRef.current = blobUrl;
+        setResult({
+          sourceUrl: artifact.sourceUrl,
+          status: 200,
+          html: artifact.html,
+          previewHtml: artifact.previewHtml,
+          blobUrl,
+          metadata: artifact.metadata,
+        });
+      });
     return () => {
       alive = false;
     };
@@ -68,29 +78,21 @@ export function HtmlScraper() {
     setResult(null);
     try {
       const targetUrl = url.trim();
-      const attemptNumber = getHistory().filter((h) => h.kind === "scrape" && h.url === targetUrl).length + 1;
       const res = await fetch("/api/scrape", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: targetUrl, attemptNumber }),
+        body: JSON.stringify({ url: targetUrl }),
       });
       const json = await res.json();
       if (!res.ok) {
         setError("Gagal mengambil HTML. Pastikan link publik bisa dibuka, lalu coba lagi.");
         return;
       }
-      const scrapeId = await saveScrapeArtifact({
-        sourceUrl: json.sourceUrl,
-        status: json.status,
-        html: json.html,
-        previewHtml: json.previewHtml,
-        metadata: json.metadata,
-      });
+      const scrapeId = json.scrapeId;
       if (!scrapeId) {
-        if (aliveRef.current) setError("HTML terlalu besar untuk disimpan di browser ini. Coba website yang lebih kecil.");
+        if (aliveRef.current) setError("Gagal menyimpan hasil scrape.");
         return;
       }
-      pushHistory({ kind: "scrape", url: json.sourceUrl ?? targetUrl, scrapeId });
       setActiveScrapeId(scrapeId);
       if (!aliveRef.current) return;
       const blobUrl = URL.createObjectURL(new Blob([json.html], { type: "text/html" }));
@@ -151,10 +153,21 @@ export function HtmlScraper() {
       {loading || result ? (
         <section className="mt-8 overflow-hidden rounded-cards border border-ink bg-cream text-left shadow-hard">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-ink bg-paper-white p-3">
-            <span className="inline-flex min-w-0 items-center gap-2 break-all text-caption font-medium text-muted">
-              <Code size={15} aria-hidden="true" /> {result?.sourceUrl ?? url.trim()}
-            </span>
-            {result ? (
+            <div className="flex min-w-0 flex-1 items-center gap-2">
+              {result ? (
+                <button
+                  onClick={() => setCollapsed(!collapsed)}
+                  className="inline-flex items-center gap-1.5 rounded-buttons border border-ink bg-paper-white px-2 py-1.5 text-caption font-medium hover:bg-cream"
+                  aria-label={collapsed ? "Expand hasil" : "Minimize hasil"}
+                >
+                  {collapsed ? <CaretUp size={14} /> : <CaretDown size={14} />}
+                </button>
+              ) : null}
+              <span className="inline-flex min-w-0 items-center gap-2 break-all text-caption font-medium text-muted">
+                <Code size={15} aria-hidden="true" /> {result?.sourceUrl ?? url.trim()}
+              </span>
+            </div>
+            {result && !collapsed ? (
               <div className="flex flex-wrap items-center gap-2">
                 <div aria-label="Tampilan hasil HTML" className="inline-flex rounded-buttons border border-ink bg-cream p-1">
                   <ViewButton active={view === "preview"} onClick={() => setView("preview")}>Preview</ViewButton>
@@ -170,27 +183,45 @@ export function HtmlScraper() {
               </div>
             ) : null}
           </div>
-          {result ? <ScrapeMetadata result={result} /> : null}
-          {!result ? (
-            <div className="grid h-[calc(100dvh-150px)] min-h-[620px] place-items-center bg-paper-white p-8 text-center">
-              <div>
-                <CircleNotch size={26} className="mx-auto animate-spin text-muted" aria-hidden="true" />
-                <p className="mt-4 text-body-sm font-medium text-ink">AI sedang melakukan scraping HTML…</p>
-                <p className="mt-2 text-caption text-muted-gray">Preview dan code akan muncul setelah index.html selesai diambil.</p>
+
+          {result && collapsed ? (
+            <div className="bg-paper-white p-5">
+              <div className="rounded-cards border border-rule bg-cream p-4">
+                <p className="break-all text-body-sm text-ink">{result.sourceUrl}</p>
+                <div className="mt-3 flex flex-wrap items-center gap-4 text-caption text-muted-gray">
+                  <span>Attempt #{result.metadata.attempt}</span>
+                  <span>{result.metadata.viewport.width}×{result.metadata.viewport.height}</span>
+                  <span>{Math.round(result.metadata.htmlBytes / 1024).toLocaleString("id-ID")} KB</span>
+                </div>
               </div>
             </div>
-          ) : view === "preview" ? (
-            <iframe
-              title={`Preview ${result.sourceUrl}`}
-              srcDoc={result.previewHtml}
-              sandbox="allow-scripts"
-              referrerPolicy="no-referrer"
-              className="h-[calc(100dvh-150px)] min-h-[620px] w-full bg-paper-white"
-            />
-          ) : (
-            <pre tabIndex={0} aria-label="Kode HTML hasil scrape" className="h-[calc(100dvh-150px)] min-h-[620px] overflow-auto bg-[#111] p-5 text-[12px] leading-5 text-paper-white">
-              <code>{result.html}</code>
-            </pre>
+          ) : null}
+
+          {!collapsed && (
+            <>
+              {result ? <ScrapeMetadata result={result} /> : null}
+              {!result ? (
+                <div className="grid h-[calc(100dvh-150px)] min-h-[620px] place-items-center bg-paper-white p-8 text-center">
+                  <div>
+                    <CircleNotch size={26} className="mx-auto animate-spin text-muted" aria-hidden="true" />
+                    <p className="mt-4 text-body-sm font-medium text-ink">AI sedang melakukan scraping HTML…</p>
+                    <p className="mt-2 text-caption text-muted-gray">Preview dan code akan muncul setelah index.html selesai diambil.</p>
+                  </div>
+                </div>
+              ) : view === "preview" ? (
+                <iframe
+                  title={`Preview ${result.sourceUrl}`}
+                  srcDoc={result.previewHtml}
+                  sandbox="allow-scripts"
+                  referrerPolicy="no-referrer"
+                  className="h-[calc(100dvh-150px)] min-h-[620px] w-full bg-paper-white"
+                />
+              ) : (
+                <pre tabIndex={0} aria-label="Kode HTML hasil scrape" className="h-[calc(100dvh-150px)] min-h-[620px] overflow-auto bg-[#111] p-5 text-[12px] leading-5 text-paper-white">
+                  <code>{result.html}</code>
+                </pre>
+              )}
+            </>
           )}
         </section>
       ) : null}

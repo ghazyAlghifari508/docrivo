@@ -1,8 +1,7 @@
-import { headers } from "next/headers";
-import { notFound } from "next/navigation";
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { insforge } from "@/lib/insforge";
+import { requireAdmin } from "@/lib/dal";
 
 type AdminJob = {
   id: string;
@@ -26,10 +25,7 @@ const LABEL: Record<string, string> = {
 };
 
 export default async function AdminPage() {
-  const expected = process.env.ADMIN_TOKEN;
-  const auth = (await headers()).get("authorization");
-  const got = auth?.startsWith("Bearer ") ? auth.slice(7) : null;
-  if (!expected || got !== expected) notFound();
+  await requireAdmin();
 
   const jobs = await insforge.select<AdminJob>("generation_jobs", {
     select: "id,source_url,status,error_code,pages_analyzed,created_at",

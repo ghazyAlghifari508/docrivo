@@ -8,9 +8,10 @@ import {
   Check,
   Warning,
   CircleNotch,
+  CaretDown,
+  CaretUp,
 } from "@phosphor-icons/react";
-import { useEffect, useRef, useState, useCallback } from "react";
-import { pushHistory, getHistory } from "@/lib/history";
+import { useEffect, useRef, useState } from "react";
 
 type Job = {
   id: string;
@@ -20,12 +21,30 @@ type Job = {
   errorMessage?: string;
   pagesAnalyzed: number;
   createdAt: string;
-  assets: Array<{ id: string; asset_type: string; source_url: string; filename?: string; status: string }>;
-  pages: Array<{ id: string; url: string; title?: string; screenshot_desktop_url?: string }>;
+  assets: Array<{
+    id: string;
+    asset_type: string;
+    source_url: string;
+    filename?: string;
+    status: string;
+  }>;
+  pages: Array<{
+    id: string;
+    url: string;
+    title?: string;
+    screenshot_desktop_url?: string;
+  }>;
   result: null | { designMd: string; implementationPrompt: string };
 };
 
-const STAGES = ["queued", "crawling", "capturing", "extracting", "generating", "completed"];
+const STAGES = [
+  "queued",
+  "crawling",
+  "capturing",
+  "extracting",
+  "generating",
+  "completed",
+];
 const STATUS_LABEL: Record<string, string> = {
   queued: "Menunggu giliran",
   crawling: "Membaca referensi",
@@ -48,27 +67,17 @@ export function GenerationResult({
 }) {
   const [job, setJob] = useState<Job | null>(null);
   const [copied, setCopied] = useState(false);
-  const [loadError, setLoadError] = useState<"" | "not_found" | "transient">("");
-  const historySaved = useRef(false);
+  const [collapsed, setCollapsed] = useState(false);
+  const [loadError, setLoadError] = useState<"" | "not_found" | "transient">(
+    "",
+  );
   // Sliding window of [timestamp, progress] samples — used to estimate remaining time.
   const samplesRef = useRef<Array<{ t: number; p: number }>>([]);
   const [remaining, setRemaining] = useState(0);
   // Reset the sample window when a new job id is shown.
-  useEffect(() => { samplesRef.current = []; }, [id]);
-
-  // Reset the once-per-job guard when a new job id is shown (e.g. after retry).
   useEffect(() => {
-    historySaved.current = false;
+    samplesRef.current = [];
   }, [id]);
-
-  // Only record history once the DESIGN.md is fully generated, never while it's
-  // still processing — a half-finished job shouldn't clutter the history list.
-  useEffect(() => {
-    if (historySaved.current || job?.status !== "completed" || !job.result) return;
-    historySaved.current = true;
-    if (getHistory().some((h) => h.jobId === id)) return;
-    pushHistory({ kind: "generate", url: job.sourceUrl, jobId: id });
-  }, [job?.status, job?.result, job?.sourceUrl, id]);
 
   useEffect(() => {
     let alive = true;
@@ -78,7 +87,10 @@ export function GenerationResult({
     async function tick() {
       controller = new AbortController();
       try {
-        const res = await fetch(`/api/generations/${id}`, { cache: "no-store", signal: controller.signal });
+        const res = await fetch(`/api/generations/${id}`, {
+          cache: "no-store",
+          signal: controller.signal,
+        });
         if (res.status === 404) {
           if (alive) setLoadError("not_found");
           return;
@@ -92,14 +104,25 @@ export function GenerationResult({
         const samples = samplesRef.current;
         samples.push({ t: Date.now(), p: json.progress });
         if (samples.length > 3) samples.shift();
-        if (samples.length >= 2 && !["completed", "failed", "cancelled"].includes(json.status)) {
+        if (
+          samples.length >= 2 &&
+          !["completed", "failed", "cancelled"].includes(json.status)
+        ) {
           const dt = (samples[samples.length - 1].t - samples[0].t) / 1000;
           const dp = samples[samples.length - 1].p - samples[0].p;
-          if (dp > 0) setRemaining(Math.round(((100 - samples[samples.length - 1].p) / dp) * dt));
+          if (dp > 0)
+            setRemaining(
+              Math.round(((100 - samples[samples.length - 1].p) / dp) * dt),
+            );
         }
-        if (!["completed", "failed", "cancelled"].includes(json.status)) timer = setTimeout(tick, 2500);
+        if (!["completed", "failed", "cancelled"].includes(json.status))
+          timer = setTimeout(tick, 2500);
       } catch (err) {
-        if (!alive || (err instanceof DOMException && err.name === "AbortError")) return;
+        if (
+          !alive ||
+          (err instanceof DOMException && err.name === "AbortError")
+        )
+          return;
         setLoadError("transient");
         timer = setTimeout(tick, 5000);
       }
@@ -117,7 +140,10 @@ export function GenerationResult({
   if (loadError && !job) {
     const missing = loadError === "not_found";
     return (
-      <Shell id={embedded ? undefined : "main"} className="grid min-h-[calc(100dvh-67px)] place-items-center bg-paper-white px-6">
+      <Shell
+        id={embedded ? undefined : "main"}
+        className="grid min-h-[calc(100dvh-67px)] place-items-center bg-paper-white px-6"
+      >
         <div className="max-w-sm text-center">
           <span className="mx-auto grid size-12 place-items-center rounded-buttons border border-ink bg-cream shadow-hard">
             <Warning size={22} weight="fill" aria-hidden="true" />
@@ -143,7 +169,10 @@ export function GenerationResult({
 
   if (!job) {
     return (
-      <Shell id={embedded ? undefined : "main"} className="grid min-h-64 place-items-center bg-paper-white">
+      <Shell
+        id={embedded ? undefined : "main"}
+        className="grid min-h-64 place-items-center bg-paper-white"
+      >
         <div className="flex items-center gap-3 text-body-sm text-muted">
           <CircleNotch size={20} className="animate-spin" aria-hidden="true" />
           Menyiapkan hasil…
@@ -167,20 +196,54 @@ export function GenerationResult({
     <Shell id={embedded ? undefined : "main"}>
       {/* HERO STRIP · dark */}
       <section className="bg-depth text-paper-white">
-        <div className="page-shell grid gap-8 py-12 lg:grid-cols-[1fr_360px] lg:items-end">
+        <div className="page-shell flex items-start justify-between gap-4 py-8">
+          <button
+            onClick={() => setCollapsed(!collapsed)}
+            className="inline-flex items-center gap-2 rounded-buttons border border-paper-white/30 bg-paper-white/10 px-3 py-2 text-caption font-medium text-paper-white/90 hover:bg-paper-white/15"
+            aria-label={collapsed ? "Expand hasil" : "Minimize hasil"}
+          >
+            {collapsed ? <CaretUp size={16} /> : <CaretDown size={16} />}
+            {collapsed ? "Expand" : "Minimize"}
+          </button>
+        </div>
+
+        {collapsed && (
+          <div className="page-shell pb-8">
+            <div className="rounded-cards border border-paper-white/15 bg-paper-white/5 p-5">
+              <p className="break-all text-body-sm text-paper-white/80">{job.sourceUrl}</p>
+              <div className="mt-3 flex items-center gap-4">
+                <span className="text-caption text-paper-white/60">
+                  {done ? (failed ? "Gagal" : "Selesai") : "Berjalan"} • {job.progress}%
+                </span>
+                {job.pagesAnalyzed > 0 && (
+                  <span className="text-caption text-paper-white/60">
+                    {job.pagesAnalyzed} halaman
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {!collapsed && (
+        <>
+        <div className="page-shell grid gap-8 pb-12 lg:grid-cols-[1fr_360px] lg:items-end">
           <div>
-            <StatusPill status={job.status} />
             <h1 className="mt-5 max-w-2xl text-heading-lg font-semibold leading-heading-lg tracking-heading-lg">
               DESIGN.md untuk <span className="emph">AI coding</span> kamu.
             </h1>
-            <p className="mt-4 break-all text-body-sm text-paper-white/60">{job.sourceUrl}</p>
+            <p className="mt-4 break-all text-body-sm text-paper-white/60">
+              {job.sourceUrl}
+            </p>
           </div>
 
           <div className="rounded-cards border border-paper-white/15 bg-paper-white/5 p-5">
             <div className="flex items-center justify-between text-caption text-paper-white/60">
               <span>Proses</span>
               <span className="inline-flex items-center gap-1.5 tabular-nums">
-                {!done && <span className="inline-block size-3 rounded-full border-2 border-current border-t-transparent animate-spin" />}
+                {!done && (
+                  <span className="inline-block size-3 rounded-full border-2 border-current border-t-transparent animate-spin" />
+                )}
                 {job.progress}%
               </span>
             </div>
@@ -197,7 +260,10 @@ export function GenerationResult({
                 style={{ width: `${job.progress}%` }}
               />
             </div>
-            <p aria-live="polite" className="mt-3 text-caption text-paper-white/70">
+            <p
+              aria-live="polite"
+              className="mt-3 text-caption text-paper-white/70"
+            >
               {done
                 ? failed
                   ? "Proses berhenti. Coba ulangi dari referensi yang sama."
@@ -206,7 +272,10 @@ export function GenerationResult({
             </p>
             {!done && remaining > 10 && (
               <p className="mt-1 text-caption text-paper-white/40">
-                Estimasi sisa {remaining >= 120 ? `${Math.round(remaining / 60)} menit` : `${remaining} detik`}
+                Estimasi sisa{" "}
+                {remaining >= 120
+                  ? `${Math.round(remaining / 60)} menit`
+                  : `${remaining} detik`}
               </p>
             )}
             {failed ? <Retry id={id} onRetry={onRetry} /> : null}
@@ -220,26 +289,40 @@ export function GenerationResult({
               {STAGES.map((s) => {
                 const idx = STAGES.indexOf(s);
                 const cur = STAGES.indexOf(job.status);
-                const state = cur > idx ? "done" : cur === idx ? "active" : "todo";
+                const state =
+                  cur > idx ? "done" : cur === idx ? "active" : "todo";
                 const label = STATUS_LABEL[s] ?? s;
                 return (
                   <li
                     key={s}
                     className={`inline-flex items-center gap-1 text-caption font-medium capitalize ${
-                      state === "active" ? "text-lime-sprint" : state === "done" ? "text-mint-edge/60" : "text-paper-white/40"
+                      state === "active"
+                        ? "text-lime-sprint"
+                        : state === "done"
+                          ? "text-mint-edge/60"
+                          : "text-paper-white/40"
                     }`}
                   >
-                    {state === "done" ? <Check size={12} weight="bold" /> : null}
-                    {state === "active" ? <AnimatedLabel label={label} /> : label}
+                    {state === "done" ? (
+                      <Check size={12} weight="bold" />
+                    ) : null}
+                    {state === "active" ? (
+                      <AnimatedLabel label={label} />
+                    ) : (
+                      label
+                    )}
                   </li>
                 );
               })}
             </ol>
           </div>
         )}
+        </>
+        )}
       </section>
 
       {/* DOCUMENT + SIDEBAR · paper */}
+      {!collapsed && (
       <section className="bg-paper-white">
         <div className="page-shell grid gap-6 py-12 lg:grid-cols-[1fr_320px]">
           <section className="overflow-hidden rounded-cards border border-ink bg-cream shadow-hard">
@@ -249,7 +332,11 @@ export function GenerationResult({
                   onClick={copy}
                   className="inline-flex items-center gap-2 rounded-buttons border border-ink bg-paper-white px-3 py-2 text-caption font-medium"
                 >
-                  {copied ? <Check size={15} weight="bold" /> : <ClipboardText size={15} />}
+                  {copied ? (
+                    <Check size={15} weight="bold" />
+                  ) : (
+                    <ClipboardText size={15} />
+                  )}
                   {copied ? "Tersalin" : "Salin"}
                 </button>
               ) : null}
@@ -288,7 +375,10 @@ export function GenerationResult({
 
           <aside className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
-              <Metric title="Halaman referensi" value={String(job.pagesAnalyzed)} />
+              <Metric
+                title="Halaman referensi"
+                value={String(job.pagesAnalyzed)}
+              />
               <Metric title="Sinyal visual" value={String(job.assets.length)} />
             </div>
 
@@ -297,26 +387,33 @@ export function GenerationResult({
               {job.pages.length ? (
                 <ul className="mt-4 space-y-3 text-caption leading-5 text-muted">
                   {job.pages.map((p) => (
-                    <li key={p.id} className="break-all border-l-2 border-rule pl-3">
+                    <li
+                      key={p.id}
+                      className="break-all border-l-2 border-rule pl-3"
+                    >
                       {p.title || p.url}
                     </li>
                   ))}
                 </ul>
               ) : (
-                <p className="mt-3 text-caption text-muted-gray">Belum ada halaman terekam.</p>
+                <p className="mt-3 text-caption text-muted-gray">
+                  Belum ada halaman terekam.
+                </p>
               )}
             </div>
 
             <div className="rounded-cards border border-mint-edge bg-mint-wash p-5">
               <h2 className="text-body-sm font-semibold">Catatan</h2>
               <p className="mt-2 text-caption leading-6 text-muted">
-                DESIGN.md ini jadi briefing visual untuk AI coding assistant, bukan salinan brand atau aset target.
+                DESIGN.md ini jadi briefing visual untuk AI coding assistant,
+                bukan salinan brand atau aset target.
               </p>
             </div>
           </aside>
         </div>
       </section>
-      </Shell>
+      )}
+    </Shell>
   );
 }
 
@@ -324,7 +421,9 @@ function Metric({ title, value }: { title: string; value: string }) {
   return (
     <div className="rounded-cards border border-rule bg-cream p-5">
       <p className="text-caption text-muted-gray">{title}</p>
-      <p className="mt-2 text-heading font-semibold tabular-nums tracking-heading">{value}</p>
+      <p className="mt-2 text-heading font-semibold tabular-nums tracking-heading">
+        {value}
+      </p>
     </div>
   );
 }
@@ -342,7 +441,12 @@ function AnimatedLabel({ label }: { label: string }) {
 function StatusPill({ status }: { status: string }) {
   const failed = status === "failed";
   const done = status === "completed";
-  if (failed) return <span className="inline-flex text-caption font-medium uppercase tracking-[0.06em] text-red-400">Gagal</span>;
+  if (failed)
+    return (
+      <span className="inline-flex text-caption font-medium uppercase tracking-[0.06em] text-red-400">
+        Gagal
+      </span>
+    );
   return (
     <span
       className={`inline-flex items-center gap-2 rounded-pills border px-3 py-1.5 text-caption font-medium uppercase tracking-[0.06em] ${
@@ -353,13 +457,23 @@ function StatusPill({ status }: { status: string }) {
             : "border-lime-sprint bg-lime-sprint/15 text-lime-sprint"
       }`}
     >
-      {!failed && <span className={`size-2 rounded-full ${done ? "bg-mint-edge" : "bg-lime-sprint"}`} />}
+      {!failed && (
+        <span
+          className={`size-2 rounded-full ${done ? "bg-mint-edge" : "bg-lime-sprint"}`}
+        />
+      )}
       {STATUS_LABEL[status] ?? status}
     </span>
   );
 }
 
-function Retry({ id, onRetry }: { id: string; onRetry?: (jobId: string) => void }) {
+function Retry({
+  id,
+  onRetry,
+}: {
+  id: string;
+  onRetry?: (jobId: string) => void;
+}) {
   async function retry() {
     const res = await fetch(`/api/generations/${id}/retry`, { method: "POST" });
     const json = await res.json();
@@ -376,4 +490,4 @@ function Retry({ id, onRetry }: { id: string; onRetry?: (jobId: string) => void 
   );
 }
 
-<style>{`.dots-anim::after { content: "."; animation: dots 1.8s steps(3) infinite; } @keyframes dots { 33% { content: ".."; } 66% { content: "..."; } }`}</style>
+<style>{`.dots-anim::after { content: "."; animation: dots 1.8s steps(3) infinite; } @keyframes dots { 33% { content: ".."; } 66% { content: "..."; } }`}</style>;

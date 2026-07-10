@@ -2,13 +2,16 @@ import type { Metadata } from "next";
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { HistoryList } from "@/components/history-list";
+import { getGenerationHistory, getScrapeHistory } from "@/lib/dal";
 
 export const metadata: Metadata = {
   title: "History - Docrivo",
   description: "Riwayat scrape HTML dan generate DESIGN.md yang pernah kamu buat.",
 };
 
-export default function HistoryPage() {
+export default async function HistoryPage() {
+  const [generations, scrapes] = await Promise.all([getGenerationHistory(), getScrapeHistory()]);
+
   return (
     <>
       <SiteHeader />
@@ -20,10 +23,22 @@ export default function HistoryPage() {
               History scrape &amp; generate
             </h1>
             <p className="mt-3 max-w-xl text-body-sm leading-7 text-muted">
-              Semua website yang kamu scrape dan DESIGN.md yang kamu generate tersimpan di browser ini.
+              Semua website yang kamu scrape dan DESIGN.md yang kamu generate tersimpan di akun Google kamu.
             </p>
           </header>
-          <HistoryList />
+          <HistoryList
+            generations={generations.map((g) => ({
+              id: g.id,
+              url: g.source_url,
+              status: g.status,
+              at: new Date(g.created_at).getTime(),
+            }))}
+            scrapes={scrapes.map((s) => ({
+              id: s.id,
+              url: s.source_url,
+              at: new Date(s.created_at).getTime(),
+            }))}
+          />
         </div>
       </main>
       <SiteFooter />
