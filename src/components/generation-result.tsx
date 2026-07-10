@@ -8,6 +8,8 @@ import {
   Check,
   Warning,
   CircleNotch,
+  CaretDown,
+  CaretUp,
 } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
 
@@ -65,6 +67,7 @@ export function GenerationResult({
 }) {
   const [job, setJob] = useState<Job | null>(null);
   const [copied, setCopied] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
   const [loadError, setLoadError] = useState<"" | "not_found" | "transient">(
     "",
   );
@@ -193,7 +196,38 @@ export function GenerationResult({
     <Shell id={embedded ? undefined : "main"}>
       {/* HERO STRIP · dark */}
       <section className="bg-depth text-paper-white">
-        <div className="page-shell grid gap-8 py-12 lg:grid-cols-[1fr_360px] lg:items-end">
+        <div className="page-shell flex items-start justify-between gap-4 py-8">
+          <button
+            onClick={() => setCollapsed(!collapsed)}
+            className="inline-flex items-center gap-2 rounded-buttons border border-paper-white/30 bg-paper-white/10 px-3 py-2 text-caption font-medium text-paper-white/90 hover:bg-paper-white/15"
+            aria-label={collapsed ? "Expand hasil" : "Minimize hasil"}
+          >
+            {collapsed ? <CaretUp size={16} /> : <CaretDown size={16} />}
+            {collapsed ? "Expand" : "Minimize"}
+          </button>
+        </div>
+
+        {collapsed && (
+          <div className="page-shell pb-8">
+            <div className="rounded-cards border border-paper-white/15 bg-paper-white/5 p-5">
+              <p className="break-all text-body-sm text-paper-white/80">{job.sourceUrl}</p>
+              <div className="mt-3 flex items-center gap-4">
+                <span className="text-caption text-paper-white/60">
+                  {done ? (failed ? "Gagal" : "Selesai") : "Berjalan"} • {job.progress}%
+                </span>
+                {job.pagesAnalyzed > 0 && (
+                  <span className="text-caption text-paper-white/60">
+                    {job.pagesAnalyzed} halaman
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {!collapsed && (
+        <>
+        <div className="page-shell grid gap-8 pb-12 lg:grid-cols-[1fr_360px] lg:items-end">
           <div>
             <h1 className="mt-5 max-w-2xl text-heading-lg font-semibold leading-heading-lg tracking-heading-lg">
               DESIGN.md untuk <span className="emph">AI coding</span> kamu.
@@ -283,9 +317,12 @@ export function GenerationResult({
             </ol>
           </div>
         )}
+        </>
+        )}
       </section>
 
       {/* DOCUMENT + SIDEBAR · paper */}
+      {!collapsed && (
       <section className="bg-paper-white">
         <div className="page-shell grid gap-6 py-12 lg:grid-cols-[1fr_320px]">
           <section className="overflow-hidden rounded-cards border border-ink bg-cream shadow-hard">
@@ -375,6 +412,7 @@ export function GenerationResult({
           </aside>
         </div>
       </section>
+      )}
     </Shell>
   );
 }
