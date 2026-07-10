@@ -62,6 +62,11 @@ export const insforge = {
       { ...filters, select },
     );
   },
+  delete(table: string, match: Query, select = "*") {
+    const filters = Object.fromEntries(Object.entries(match).map(([k, v]) => [k, `eq.${String(v)}`]));
+    return request(`/api/database/records/${table}`, { method: "DELETE" }, { ...filters, select });
+  },
+
   rpc<T>(fn: string, args?: Record<string, unknown>) {
     return request<T>(`/api/database/rpc/${fn}`, {
       method: "POST",

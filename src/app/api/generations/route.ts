@@ -4,6 +4,7 @@ import { AppError, ERROR_CODES } from "@/lib/errors";
 import { insforge } from "@/lib/insforge";
 import { rateLimit } from "@/lib/rate-limit";
 import { validateUrl } from "@/lib/url-validator";
+import { getUser } from "@/lib/dal";
 
 const Body = z.object({
   url: z.string().min(1),
@@ -17,6 +18,14 @@ const Body = z.object({
 
 export async function POST(req: Request) {
   try {
+    const user = await getUser();
+    if (!user) {
+      return NextResponse.json(
+        { error: { code: "UNAUTHORIZED", message: "Masuk dengan Google dulu." } },
+        { status: 401 },
+      );
+    }
+
     const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "local";
     if (!(await rateLimit(`generations:${ip}`))) {
       return NextResponse.json(
@@ -39,6 +48,7 @@ export async function POST(req: Request) {
           progress: 0,
           max_pages: body.options?.maxPages ?? Number(process.env.MAX_PAGES ?? 5),
           output_language: body.options?.outputLanguage ?? "id",
+          user_id: user.id,
         },
       ],
       "id,status",

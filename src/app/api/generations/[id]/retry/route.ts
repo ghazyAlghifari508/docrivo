@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { insforge } from "@/lib/insforge";
 import { ERROR_CODES } from "@/lib/errors";
 import { rateLimit } from "@/lib/rate-limit";
+import { getUser } from "@/lib/dal";
 
 type RetryJob = { id: string; status: string; retry_of: string | null };
 
@@ -10,6 +11,18 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
+  const user = await getUser();
+  if (!user) {
+    return NextResponse.json({ error: { code: "UNAUTHORIZED" } }, { status: 401 });
+  }
+  const owned = await insforge.maybeSingle<{ id: string; user_id: string | null }>("generation_jobs", {
+    id: `eq.${id}`,
+    select: "id,user_id",
+  });
+  if (!owned || owned.user_id !== user.id) {
+    return NextResponse.json({ error: { code: "NOT_FOUND" } }, { status: 404 });
+  }
+
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "local";
   if (!(await rateLimit(`retry:${ip}`))) {
     return NextResponse.json(

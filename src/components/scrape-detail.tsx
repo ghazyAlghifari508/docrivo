@@ -3,26 +3,47 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, CircleNotch, Code, DownloadSimple, GlobeHemisphereWest, Warning } from "@phosphor-icons/react";
-import { getScrapeArtifact, type ScrapeArtifact } from "@/lib/history";
+
+type ScrapeResult = {
+  id: string;
+  sourceUrl: string;
+  html: string;
+  previewHtml: string;
+  metadata: {
+    attempt: number;
+    capturedAt: string;
+    finalUrl: string;
+    viewport: { width: number; height: number };
+    captureMode: string;
+    htmlBytes: number;
+    previewHtmlBytes: number;
+  };
+  createdAt: string;
+};
 
 type ResultView = "preview" | "code";
 
 export function ScrapeDetail({ id }: { id: string }) {
-  const [item, setItem] = useState<ScrapeArtifact | null | undefined>(undefined);
+  const [item, setItem] = useState<ScrapeResult | null | undefined>(undefined);
   const [view, setView] = useState<ResultView>("preview");
   const [blobUrl, setBlobUrl] = useState("");
   const blobRef = useRef("");
 
   useEffect(() => {
     let alive = true;
-    getScrapeArtifact(id).then((artifact) => {
-      if (!alive) return;
-      setItem(artifact);
-      if (!artifact) return;
-      const url = URL.createObjectURL(new Blob([artifact.html], { type: "text/html" }));
-      blobRef.current = url;
-      setBlobUrl(url);
-    });
+    fetch(`/api/scrapes/${id}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((artifact) => {
+        if (!alive) return;
+        if (!artifact) {
+          setItem(null);
+          return;
+        }
+        setItem(artifact);
+        const url = URL.createObjectURL(new Blob([artifact.html], { type: "text/html" }));
+        blobRef.current = url;
+        setBlobUrl(url);
+      });
     return () => {
       alive = false;
       if (blobRef.current) URL.revokeObjectURL(blobRef.current);
@@ -49,7 +70,7 @@ export function ScrapeDetail({ id }: { id: string }) {
           </span>
           <h1 className="mt-6 text-heading-sm font-semibold tracking-heading-sm">Hasil scrape tidak ditemukan.</h1>
           <p className="mt-3 text-body-sm leading-7 text-muted">
-            Detail HTML ini cuma tersimpan di browser yang membuatnya. Scrape ulang kalau storage browser sudah dibersihkan.
+            Detail HTML ini cuma tersimpan di akun Google kamu. Scrape ulang kalau sudah dihapus.
           </p>
           <Link
             href="/history"

@@ -2,7 +2,7 @@
 
 import { ArrowRight, GlobeHemisphereWest, Warning, DownloadSimple, CircleNotch, Code } from "@phosphor-icons/react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { pushHistory, getHistory, saveScrapeArtifact, getScrapeArtifact, getActiveScrapeId, setActiveScrapeId } from "@/lib/history";
+import { getActiveScrapeId, setActiveScrapeId } from "@/lib/history";
 
 type Scraped = {
   sourceUrl: string;
@@ -45,12 +45,21 @@ export function HtmlScraper() {
     const activeId = getActiveScrapeId();
     if (!activeId) return;
     let alive = true;
-    getScrapeArtifact(activeId).then((artifact) => {
-      if (!alive || !aliveRef.current || !artifact) return;
-      const blobUrl = URL.createObjectURL(new Blob([artifact.html], { type: "text/html" }));
-      blobRef.current = blobUrl;
-      setResult({ ...artifact, blobUrl });
-    });
+    fetch(`/api/scrapes/${activeId}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((artifact) => {
+        if (!alive || !aliveRef.current || !artifact) return;
+        const blobUrl = URL.createObjectURL(new Blob([artifact.html], { type: "text/html" }));
+        blobRef.current = blobUrl;
+        setResult({
+          sourceUrl: artifact.sourceUrl,
+          status: 200,
+          html: artifact.html,
+          previewHtml: artifact.previewHtml,
+          blobUrl,
+          metadata: artifact.metadata,
+        });
+      });
     return () => {
       alive = false;
     };
@@ -68,29 +77,21 @@ export function HtmlScraper() {
     setResult(null);
     try {
       const targetUrl = url.trim();
-      const attemptNumber = getHistory().filter((h) => h.kind === "scrape" && h.url === targetUrl).length + 1;
       const res = await fetch("/api/scrape", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: targetUrl, attemptNumber }),
+        body: JSON.stringify({ url: targetUrl }),
       });
       const json = await res.json();
       if (!res.ok) {
         setError("Gagal mengambil HTML. Pastikan link publik bisa dibuka, lalu coba lagi.");
         return;
       }
-      const scrapeId = await saveScrapeArtifact({
-        sourceUrl: json.sourceUrl,
-        status: json.status,
-        html: json.html,
-        previewHtml: json.previewHtml,
-        metadata: json.metadata,
-      });
+      const scrapeId = json.scrapeId;
       if (!scrapeId) {
-        if (aliveRef.current) setError("HTML terlalu besar untuk disimpan di browser ini. Coba website yang lebih kecil.");
+        if (aliveRef.current) setError("Gagal menyimpan hasil scrape.");
         return;
       }
-      pushHistory({ kind: "scrape", url: json.sourceUrl ?? targetUrl, scrapeId });
       setActiveScrapeId(scrapeId);
       if (!aliveRef.current) return;
       const blobUrl = URL.createObjectURL(new Blob([json.html], { type: "text/html" }));
