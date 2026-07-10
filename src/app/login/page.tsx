@@ -23,7 +23,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
             Masuk dengan <span className="emph">Google</span>.
           </h1>
           <p className="mt-4 text-body-sm leading-7 text-muted">
-            Tidak ada register, username, atau password. Cukup pakai akun Google.
+            Gunakan akun Google Anda untuk mengakses Docrivo dan mulai membuat DESIGN.md.
           </p>
           {params.error ? (
             <p role="alert" className="mt-4 rounded-buttons border border-red-300 bg-red-50 px-4 py-3 text-caption font-medium text-red-700">
