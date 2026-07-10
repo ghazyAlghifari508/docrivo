@@ -9,7 +9,7 @@ function safeNext(raw: string | null) {
 export async function GET(request: NextRequest) {
   const code = request.nextUrl.searchParams.get("insforge_code");
   const oauthError = request.nextUrl.searchParams.get("error");
-  const next = safeNext(request.nextUrl.searchParams.get("next"));
+  const next = safeNext(request.cookies.get("insforge_oauth_next")?.value ?? null);
 
   if (oauthError || !code) {
     return NextResponse.redirect(new URL("/login?error=oauth_failed", request.url));
@@ -29,5 +29,6 @@ export async function GET(request: NextRequest) {
   }
 
   response.cookies.delete("insforge_code_verifier");
+  response.cookies.delete("insforge_oauth_next");
   return response;
 }

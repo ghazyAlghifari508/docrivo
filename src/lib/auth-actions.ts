@@ -18,7 +18,6 @@ export async function signInWithGoogle(formData: FormData) {
   const auth = createAuthActions({ cookies: cookieStore });
   const next = safeNext(formData.get("next"));
   const callback = new URL("/api/auth/callback", appUrl());
-  callback.searchParams.set("next", next);
 
   const { data, error } = await auth.signInWithOAuth("google", {
     redirectTo: callback.toString(),
@@ -31,6 +30,14 @@ export async function signInWithGoogle(formData: FormData) {
   }
 
   cookieStore.set("insforge_code_verifier", data.codeVerifier, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    maxAge: 600,
+  });
+
+  cookieStore.set("insforge_oauth_next", next, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
