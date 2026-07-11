@@ -3,6 +3,7 @@ import {
   FileMd,
   ArrowClockwise,
 } from "@phosphor-icons/react/dist/ssr";
+import { CreditBadge } from "@/components/credit-badge";
 import { HomeGenerator } from "@/components/home-generator";
 import { TypingHeadline } from "@/components/typing-headline";
 import { SiteHeader } from "@/components/site-header";
@@ -10,7 +11,7 @@ import { SiteFooter } from "@/components/site-footer";
 import { Topographic } from "@/components/topographic";
 import { Reveal } from "@/components/reveal";
 import { getUser } from "@/lib/dal";
-import Link from "next/link";
+import { getPlans, getEntitlement, remainingFor } from "@/lib/plans";
 
 const CHIPS = [
   ["AI lebih nurut", ShieldCheck],
@@ -20,6 +21,16 @@ const CHIPS = [
 
 export default async function Home() {
   const user = await getUser();
+
+  let planLabel = "";
+  let remainingDesign: number | null = 0;
+  let remainingScrape: number | null = 0;
+  if (user) {
+    const [plans, entitlement] = await Promise.all([getPlans(), getEntitlement(user.id)]);
+    planLabel = plans.find((p) => p.plan === entitlement.plan)?.label ?? "Free";
+    remainingDesign = remainingFor(entitlement, plans, "designmd");
+    remainingScrape = remainingFor(entitlement, plans, "scrape");
+  }
 
   return (
     <>
@@ -33,6 +44,12 @@ export default async function Home() {
 
           <div className="page-shell relative w-full py-20 text-center">
             <Reveal className="mx-auto flex max-w-3xl flex-col items-center">
+              {user ? (
+                <div className="mb-6">
+                  <CreditBadge planLabel={planLabel} design={remainingDesign} scrape={remainingScrape} />
+                </div>
+              ) : null}
+
               <div>
                 <TypingHeadline />
               </div>
@@ -45,17 +62,11 @@ export default async function Home() {
             </Reveal>
 
             <Reveal delay={120} className="mx-auto mt-10 w-full">
-              {user ? (
-                <HomeGenerator />
-              ) : (
-                <Link
-                  href="/login"
-                  aria-label="Masuk dengan Google untuk menggunakan generator DESIGN.md dan Scrape HTML"
-                  className="pressable inline-flex h-12 items-center justify-center rounded-buttons border border-ink bg-lime-sprint px-6 text-body-sm font-medium text-ink shadow-hard"
-                >
-                  Masuk dengan Google
-                </Link>
-              )}
+              <HomeGenerator
+                authed={!!user}
+                remainingDesign={remainingDesign}
+                remainingScrape={remainingScrape}
+              />
             </Reveal>
 
             <Reveal delay={220} className="mx-auto mt-8 flex max-w-xl flex-wrap items-center justify-center gap-x-6 gap-y-2 text-caption text-muted-gray">

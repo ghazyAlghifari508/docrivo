@@ -14,6 +14,7 @@ const USER_NAV = [
   ["Home", "/"],
   ["History", "/history"],
   ["Template", "/template"],
+  ["Pricing", "/pricing"],
 ];
 
 export async function SiteHeader({ surface = "paper" }: { surface?: "paper" | "cream" | "depth" }) {

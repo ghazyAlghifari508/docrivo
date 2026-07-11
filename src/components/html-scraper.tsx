@@ -1,9 +1,8 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { ArrowRight, GlobeHemisphereWest, Warning, DownloadSimple, CircleNotch, Code, CaretDown, CaretUp } from "@phosphor-icons/react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { getActiveScrapeId, setActiveScrapeId } from "@/lib/history";
 
 type Scraped = {
   sourceUrl: string;
@@ -23,8 +22,17 @@ type Scraped = {
 };
 type ResultView = "preview" | "code";
 
-export function HtmlScraper() {
-  const router = useRouter();
+export function HtmlScraper({
+  guest = false,
+  remaining = null,
+  onQuotaExceeded,
+  onConsumed,
+}: {
+  guest?: boolean;
+  remaining?: number | null;
+  onQuotaExceeded?: () => void;
+  onConsumed?: () => void;
+} = {}) {
   const [url, setUrl] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -33,6 +41,7 @@ export function HtmlScraper() {
   const [collapsed, setCollapsed] = useState(false);
   const blobRef = useRef("");
   const aliveRef = useRef(true);
+  const outOfCredit = remaining != null && remaining <= 0;
 
   // Revoke the previous preview blob on replace/unmount to avoid leaking object URLs.
   useEffect(() => {
@@ -46,6 +55,8 @@ export function HtmlScraper() {
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (!url.trim()) return setError("Link wajib diisi.");
+    // Client pre-check: no credit → modal, never hit the server.
+    if (outOfCredit) return onQuotaExceeded?.();
     setLoading(true);
     setError("");
     if (blobRef.current) {
@@ -53,6 +64,7 @@ export function HtmlScraper() {
       blobRef.current = "";
     }
     setResult(null);
+    setCollapsed(false);
     try {
       const targetUrl = url.trim();
       const res = await fetch("/api/scrape", {
@@ -61,6 +73,10 @@ export function HtmlScraper() {
         body: JSON.stringify({ url: targetUrl }),
       });
       const json = await res.json();
+      if (res.status === 402) {
+        onQuotaExceeded?.();
+        return;
+      }
       if (!res.ok) {
         setError("Gagal mengambil HTML. Pastikan link publik bisa dibuka, lalu coba lagi.");
         return;
@@ -70,8 +86,12 @@ export function HtmlScraper() {
         if (aliveRef.current) setError("Gagal menyimpan hasil scrape.");
         return;
       }
-      setActiveScrapeId(scrapeId);
-      router.push(`/history/scrapes/${scrapeId}`);
+      onConsumed?.();
+      if (!aliveRef.current) return;
+      const blobUrl = URL.createObjectURL(new Blob([json.html], { type: "text/html" }));
+      blobRef.current = blobUrl;
+      setView("preview");
+      setResult({ ...json, blobUrl });
     } catch {
       setError("Jaringan bermasalah. Coba lagi sebentar lagi.");
     } finally {
@@ -91,23 +111,34 @@ export function HtmlScraper() {
               type="url"
               inputMode="url"
               autoComplete="url"
+              name="url"
               value={url}
               onChange={(e) => setUrl(e.target.value)}
               placeholder="https://example.com"
-              disabled={loading}
+              disabled={loading || guest}
               required
               aria-invalid={!!error}
               aria-describedby="scrape-help"
               className="h-full min-w-0 flex-1 bg-transparent text-body-sm text-ink outline-none placeholder:text-muted-gray disabled:opacity-60"
             />
           </div>
-          <button
-            disabled={loading || !url.trim()}
-            className="pressable inline-flex h-14 items-center justify-center gap-2 rounded-buttons border border-ink bg-lime-sprint px-6 text-body-sm font-medium text-ink shadow-hard disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {loading ? "Mengambil HTML…" : "Scrape HTML"}
-            {!loading && <ArrowRight size={18} weight="bold" aria-hidden="true" />}
-          </button>
+          {guest ? (
+            <Link
+              href="/login"
+              className="pressable inline-flex h-14 items-center justify-center gap-2 rounded-buttons border border-ink bg-lime-sprint px-6 text-body-sm font-medium text-ink shadow-hard"
+            >
+              Masuk untuk mulai
+              <ArrowRight size={18} weight="bold" aria-hidden="true" />
+            </Link>
+          ) : (
+            <button
+              disabled={loading || !url.trim()}
+              className="pressable inline-flex h-14 items-center justify-center gap-2 rounded-buttons border border-ink bg-lime-sprint px-6 text-body-sm font-medium text-ink shadow-hard disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {loading ? "Mengambil HTML…" : "Scrape HTML"}
+              {!loading && <ArrowRight size={18} weight="bold" aria-hidden="true" />}
+            </button>
+          )}
         </div>
         <div className="mt-3">
           {error ? (

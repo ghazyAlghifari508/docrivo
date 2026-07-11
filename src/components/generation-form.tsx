@@ -1,25 +1,35 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { ArrowRight, GlobeHemisphereWest, Warning } from "@phosphor-icons/react";
 import { useState, type FormEvent } from "react";
 
 export function GenerationForm({
   tone = "light",
+  guest = false,
+  remaining = null,
+  onQuotaExceeded,
+  onCreated,
 }: {
   tone?: "light" | "dark";
+  guest?: boolean;
+  remaining?: number | null;
+  onQuotaExceeded?: () => void;
+  onCreated: (jobId: string) => void;
 }) {
-  const router = useRouter();
   const [url, setUrl] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const dark = tone === "dark";
   const helperId = "url-help";
   const errorId = "url-error";
+  const outOfCredit = remaining != null && remaining <= 0;
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (!url.trim()) return setError("Link wajib diisi.");
+    // Client pre-check: no credit → modal, never hit the server.
+    if (outOfCredit) return onQuotaExceeded?.();
     setLoading(true);
     setError("");
     try {
@@ -29,11 +39,15 @@ export function GenerationForm({
         body: JSON.stringify({ url }),
       });
       const json = await res.json();
+      if (res.status === 402) {
+        onQuotaExceeded?.();
+        return;
+      }
       if (!res.ok) {
         setError("DESIGN.md gagal dibuat. Pastikan link publik bisa dibuka, lalu coba lagi.");
         return;
       }
-      router.push(`/generations/${json.jobId}`);
+      onCreated(json.jobId);
     } catch {
       setError("Jaringan bermasalah. Coba lagi sebentar lagi.");
     } finally {
@@ -58,10 +72,11 @@ Website referensi
             type="url"
             inputMode="url"
             autoComplete="url"
+            name="url"
             value={url}
             onChange={(e) => setUrl(e.target.value)}
             placeholder="https://example.com"
-            disabled={loading}
+            disabled={loading || guest}
             required
             aria-invalid={!!error}
             aria-describedby={error ? errorId : helperId}
@@ -69,13 +84,23 @@ Website referensi
           />
         </div>
 
-        <button
-          disabled={loading || !url.trim()}
-          className="pressable inline-flex h-14 items-center justify-center gap-2 rounded-buttons border border-ink bg-lime-sprint px-6 text-body-sm font-medium text-ink shadow-hard disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {loading ? "Menyusun DESIGN.md…" : "Buat DESIGN.md"}
-          {!loading && <ArrowRight size={18} weight="bold" aria-hidden="true" />}
-        </button>
+        {guest ? (
+          <Link
+            href="/login"
+            className="pressable inline-flex h-14 items-center justify-center gap-2 rounded-buttons border border-ink bg-lime-sprint px-6 text-body-sm font-medium text-ink shadow-hard"
+          >
+            Masuk untuk mulai
+            <ArrowRight size={18} weight="bold" aria-hidden="true" />
+          </Link>
+        ) : (
+          <button
+            disabled={loading || !url.trim()}
+            className="pressable inline-flex h-14 items-center justify-center gap-2 rounded-buttons border border-ink bg-lime-sprint px-6 text-body-sm font-medium text-ink shadow-hard disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {loading ? "Menyusun DESIGN.md…" : "Buat DESIGN.md"}
+            {!loading && <ArrowRight size={18} weight="bold" aria-hidden="true" />}
+          </button>
+        )}
       </div>
 
       <div className="mt-3 flex items-center justify-center gap-2">

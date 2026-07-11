@@ -5,6 +5,7 @@ import { insforge } from "@/lib/insforge";
 import { rateLimit } from "@/lib/rate-limit";
 import { validateUrl } from "@/lib/url-validator";
 import { getUser } from "@/lib/dal";
+import { consumeQuota } from "@/lib/plans";
 
 const Body = z.object({
   url: z.string().min(1),
@@ -37,6 +38,17 @@ export async function POST(req: Request) {
     const body = Body.parse(await req.json());
     const valid = await validateUrl(body.url);
     const host = valid.url.hostname.toLowerCase();
+
+    // Atomic credit gate right BEFORE creating the job — validated URL first so
+    // an invalid URL doesn't burn a credit. Worker can't process a job that was
+    // never created, so there's no way to generate without a credit.
+    const quota = await consumeQuota(user.id, "designmd");
+    if (!quota.allowed) {
+      return NextResponse.json(
+        { error: { code: "QUOTA_EXCEEDED", message: ERROR_CODES.QUOTA_EXCEEDED } },
+        { status: 402 },
+      );
+    }
 
     const [job] = await insforge.insert<{ id: string; status: string }>(
       "generation_jobs",

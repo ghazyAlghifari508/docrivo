@@ -13,6 +13,7 @@
   "dependencies": {
     "@insforge/sdk": "^1.4.3",
     "@phosphor-icons/react": "^2.1.10",
+    "apify-client": "^2.23.4",
     "dotenv": "^17.4.2",
     "next": "16.2.10",
     "openai": "^6.45.0",

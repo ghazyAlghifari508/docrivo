@@ -1,6 +1,6 @@
 // Client-side storage for currently active job/scrape IDs.
-// Persists so navigating away and back (or reloading) keeps the last result
-// until the user makes a new one.
+// Intentional: result UI is session-only. Refresh/hard refresh/reopen should
+// start clean, while tab switching keeps in-memory state.
 
 const ACTIVE_JOB = "docrivo:active:job:v1";
 const ACTIVE_SCRAPE = "docrivo:active:scrape:v1";
@@ -8,7 +8,7 @@ const ACTIVE_SCRAPE = "docrivo:active:scrape:v1";
 function readActive(key: string): string {
   if (typeof window === "undefined") return "";
   try {
-    return window.localStorage.getItem(key) ?? "";
+    return window.sessionStorage.getItem(key) ?? "";
   } catch {
     return "";
   }
@@ -17,8 +17,8 @@ function readActive(key: string): string {
 function writeActive(key: string, value: string): void {
   if (typeof window === "undefined") return;
   try {
-    if (value) window.localStorage.setItem(key, value);
-    else window.localStorage.removeItem(key);
+    if (value) window.sessionStorage.setItem(key, value);
+    else window.sessionStorage.removeItem(key);
   } catch {
     /* best-effort */
   }

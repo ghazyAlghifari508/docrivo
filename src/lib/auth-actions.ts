@@ -1,11 +1,14 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createAuthActions } from "@insforge/sdk/ssr";
+import { requireUser } from "./dal";
+import { createInsForgeServerClient } from "./insforge-server";
 
 function appUrl() {
-  return process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  return process.env.APP_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 }
 
 function safeNext(raw: FormDataEntryValue | null) {
@@ -46,6 +49,28 @@ export async function signInWithGoogle(formData: FormData) {
   });
 
   redirect(data.url);
+}
+
+const NAME_CONTROL = /[\x00-\x1f\x7f]/;
+
+export async function updateProfile(formData: FormData) {
+  const user = await requireUser();
+  const name = String(formData.get("name") ?? "").trim();
+
+  if (!name || name.length > 80 || NAME_CONTROL.test(name)) {
+    redirect("/profile?error=invalid_name");
+  }
+
+  const currentProfile = user.profile && typeof user.profile === "object" && !Array.isArray(user.profile) ? user.profile : {};
+  const client = await createInsForgeServerClient();
+  const { error } = await client.auth.setProfile({ ...currentProfile, name });
+
+  if (error) redirect("/profile?error=profile_update_failed");
+
+  revalidatePath("/");
+  revalidatePath("/profile");
+  revalidatePath("/setting");
+  redirect("/profile?updated=1");
 }
 
 export async function signOut() {

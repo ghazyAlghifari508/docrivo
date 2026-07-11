@@ -1,16 +1,20 @@
 import { config } from "dotenv";
 config({ path: ".env.local" });
+import http from "node:http";
 import { chromium, type Page } from "playwright";
 import { generateDesign } from "../src/lib/ai-provider";
 import { AppError } from "../src/lib/errors";
+import { fetchHtml } from "../src/lib/fetch-html";
 import { insforge } from "../src/lib/insforge-core";
 import { BROWSER_UA, DESKTOP_VIEWPORT, guardContext } from "../src/lib/render-page";
 import { validateUrl } from "../src/lib/url-validator";
 import type { DesignExtraction, GenerationJob } from "../src/lib/types";
 
 const POLL_MS = Number(process.env.WORKER_POLL_MS ?? 2000);
+const PORT = Number(process.env.PORT ?? 8080);
 
 export async function main() {
+  serveHttp();
   console.log(`[worker] polling every ${POLL_MS}ms`);
   for (;;) {
     try {
@@ -21,6 +25,21 @@ export async function main() {
     }
     await sleep(POLL_MS);
   }
+}
+
+function serveHttp() {
+  http
+    .createServer((req, res) => {
+      // Health check keeps Fly from cordoning the machine
+      if (req.method === "GET" && req.url === "/health") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end('{"ok":true}');
+        return;
+      }
+      res.writeHead(404);
+      res.end();
+    })
+    .listen(PORT, () => console.log(`[worker] http on :${PORT}`));
 }
 
 export async function claimJob(jobId: string): Promise<GenerationJob | null> {
@@ -36,7 +55,7 @@ export async function claimJob(jobId: string): Promise<GenerationJob | null> {
 export async function processJob(job: GenerationJob) {
   try {
     await log(job.id, "info", "job_started", job.source_url);
-    const browser = await chromium.launch({ headless: true });
+    const browser = await chromium.launch({ headless: true, args: ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu", "--disable-software-rasterizer"] });
     try {
       const result = await crawl(browser, job);
       await setStatus(job.id, "generating");
