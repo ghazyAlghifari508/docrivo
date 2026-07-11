@@ -1,15 +1,15 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { ArrowRight, GlobeHemisphereWest, Warning } from "@phosphor-icons/react";
 import { useState, type FormEvent } from "react";
 
 export function GenerationForm({
   tone = "light",
-  onCreated,
 }: {
   tone?: "light" | "dark";
-  onCreated: (jobId: string) => void;
 }) {
+  const router = useRouter();
   const [url, setUrl] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -33,7 +33,7 @@ export function GenerationForm({
         setError("DESIGN.md gagal dibuat. Pastikan link publik bisa dibuka, lalu coba lagi.");
         return;
       }
-      onCreated(json.jobId);
+      router.push(`/generations/${json.jobId}`);
     } catch {
       setError("Jaringan bermasalah. Coba lagi sebentar lagi.");
     } finally {

@@ -12,6 +12,7 @@ import {
   CaretUp,
 } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 
 type Job = {
   id: string;
@@ -474,18 +475,30 @@ function Retry({
   id: string;
   onRetry?: (jobId: string) => void;
 }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+
   async function retry() {
-    const res = await fetch(`/api/generations/${id}/retry`, { method: "POST" });
-    const json = await res.json();
-    if (json.jobId) onRetry?.(json.jobId);
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/generations/${id}/retry`, { method: "POST" });
+      const json = await res.json();
+      if (json.jobId) {
+        if (onRetry) onRetry(json.jobId);
+        else router.push(`/`);
+      }
+    } finally {
+      setBusy(false);
+    }
   }
   return (
     <button
+      disabled={busy}
       onClick={retry}
-      className="pressable pressable-white mt-4 inline-flex w-full items-center justify-center gap-2 rounded-buttons border border-paper-white bg-lime-sprint px-4 py-2.5 text-body-sm font-medium text-ink shadow-hard-white"
+      className="pressable pressable-white mt-4 inline-flex w-full items-center justify-center gap-2 rounded-buttons border border-paper-white bg-lime-sprint px-4 py-2.5 text-body-sm font-medium text-ink shadow-hard-white disabled:opacity-60"
     >
-      <ArrowClockwise size={18} aria-hidden="true" />
-      Coba lagi
+      {busy ? <CircleNotch size={18} className="animate-spin" aria-hidden="true" /> : <ArrowClockwise size={18} aria-hidden="true" />}
+      {busy ? "Memproses…" : "Coba lagi"}
     </button>
   );
 }

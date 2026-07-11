@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { ArrowRight, GlobeHemisphereWest, Warning, DownloadSimple, CircleNotch, Code, CaretDown, CaretUp } from "@phosphor-icons/react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { getActiveScrapeId, setActiveScrapeId } from "@/lib/history";
@@ -23,6 +24,7 @@ type Scraped = {
 type ResultView = "preview" | "code";
 
 export function HtmlScraper() {
+  const router = useRouter();
   const [url, setUrl] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -38,31 +40,6 @@ export function HtmlScraper() {
     return () => {
       aliveRef.current = false;
       if (blobRef.current) URL.revokeObjectURL(blobRef.current);
-    };
-  }, []);
-
-  // Restore the last scrape output so navigating away and back keeps it on screen.
-  useEffect(() => {
-    const activeId = getActiveScrapeId();
-    if (!activeId) return;
-    let alive = true;
-    fetch(`/api/scrapes/${activeId}`)
-      .then((res) => (res.ok ? res.json() : null))
-      .then((artifact) => {
-        if (!alive || !aliveRef.current || !artifact) return;
-        const blobUrl = URL.createObjectURL(new Blob([artifact.html], { type: "text/html" }));
-        blobRef.current = blobUrl;
-        setResult({
-          sourceUrl: artifact.sourceUrl,
-          status: 200,
-          html: artifact.html,
-          previewHtml: artifact.previewHtml,
-          blobUrl,
-          metadata: artifact.metadata,
-        });
-      });
-    return () => {
-      alive = false;
     };
   }, []);
 
@@ -94,11 +71,7 @@ export function HtmlScraper() {
         return;
       }
       setActiveScrapeId(scrapeId);
-      if (!aliveRef.current) return;
-      const blobUrl = URL.createObjectURL(new Blob([json.html], { type: "text/html" }));
-      blobRef.current = blobUrl;
-      setView("preview");
-      setResult({ ...json, blobUrl });
+      router.push(`/history/scrapes/${scrapeId}`);
     } catch {
       setError("Jaringan bermasalah. Coba lagi sebentar lagi.");
     } finally {
