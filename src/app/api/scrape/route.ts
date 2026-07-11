@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { AppError, ERROR_CODES } from "@/lib/errors";
-import { scrapeHtml, fetchHtml } from "@/lib/fetch-html";
+import { scrapeHtml, fetchHtml, inlineStyles } from "@/lib/fetch-html";
 import { apifyScrape } from "@/lib/apify";
 import { rewritePreviewAssets } from "@/lib/preview-html";
 import { rateLimit } from "@/lib/rate-limit";
@@ -14,14 +14,24 @@ export const maxDuration = 60;
 
 const Body = z.object({ url: z.string().min(1), attemptNumber: z.number().int().positive().optional() });
 
+/** Inline href then absolutize */
+function applyInline(html: string, base: string) {
+  const tag = `<base href="${new URL(base).href}">`;
+  const withBase = /<base\b[^>]*>/i.test(html)
+    ? html.replace(/<base\b[^>]*>/i, tag)
+    : /<head[^>]*>/i.test(html)
+      ? html.replace(/<head[^>]*>/i, (m) => `${m}${tag}`)
+      : `${tag}${html}`;
+  return withBase;
+}
+
 /**
  * Render a URL to HTML + previewHtml. Playwright (scrapeHtml) works locally but
  * fails in Vercel's serverless lambda. Production uses Apify (JS-rendered browser)
- * with fallback to raw HTTP.
+ * with fallback to raw HTTP. After getting HTML, we inline external CSS and rewrite
+ * all asset URLs through the same-origin proxy so previews look complete.
  */
 async function renderScrape(url: string, attemptNumber?: number) {
-  // Vercel: use Apify (Chrome headless on Apify's infra), fallback fetchHtml
-  // Local: use Playwright (scrapeHtml) — has Chromium installed
   const isLocal = !process.env.VERCEL;
   if (isLocal) return scrapeHtml(url, attemptNumber);
 
@@ -36,7 +46,13 @@ async function renderScrape(url: string, attemptNumber?: number) {
   }
   if (!html || html.length < 50) throw new AppError("NO_ANALYZABLE_CONTENT");
 
-  const previewHtml = rewritePreviewAssets(html, url);
+  // Inline external stylesheets so the preview doesn't need N separate proxy
+  // fetches for CSS (which hit rate limits). Then absolutize <base> so relative
+  // assets resolve against the source origin. Finally rewrite all urls through
+  // the same-origin SSRF-safe proxy.
+  const inlined = await inlineStyles(html, url).catch(() => html);
+  const withBase = applyInline(inlined, url);
+  const previewHtml = rewritePreviewAssets(withBase, url);
   return {
     sourceUrl: url,
     status: 200,

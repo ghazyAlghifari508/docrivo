@@ -33,14 +33,6 @@ export async function GET(
     return NextResponse.json({ error: { code: "NOT_FOUND" } }, { status: 404 });
   }
 
-  if (job.status === "queued") {
-    after(() => {
-      void fetch(new URL("/api/worker/tick", req.url), { method: "POST" }).catch((err) => {
-        if (err && (err as Error).message) console.error("[api] worker tick failed", (err as Error).message);
-        else console.error("[api] worker tick failed (no message)");
-      });
-    });
-  }
 
   const [pages, assets, document] = await Promise.all([
     insforge.select("crawled_pages", {

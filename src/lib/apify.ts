@@ -35,7 +35,7 @@ export async function apifyScrape(
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
     },
-    signal: AbortSignal.timeout(15_000),
+    signal: AbortSignal.timeout(25_000),
     body: JSON.stringify({
       runInput: {
         runMode: "DEVELOPMENT",

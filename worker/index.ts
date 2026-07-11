@@ -129,13 +129,17 @@ async function crawl(browser: Awaited<ReturnType<typeof chromium.launch>>, job: 
     const { normalized: url } = await validateUrl(rawUrl);
     seen.add(url);
 
-    const context = await browser.newContext({
+    // ponytail: use default context instead of newContext() — spawning a renderer
+    // process in Fly.io's 512MB microVM blocks the fork and hangs forever.
+    // Default context is launched with the browser and has no fork cost.
+    const contexts = browser.contexts();
+    const context = contexts[0] || (await browser.newContext({
       viewport: DESKTOP_VIEWPORT,
       userAgent: BROWSER_UA,
       locale: "en-US",
       ignoreHTTPSErrors: true,
       serviceWorkers: "block",
-    });
+    }));
     await guardContext(context);
     const page = await context.newPage();
     let statusCode = 200;

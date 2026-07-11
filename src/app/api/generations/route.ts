@@ -66,11 +66,6 @@ export async function POST(req: Request) {
       "id,status",
     );
 
-    after(() => {
-      void fetch(new URL("/api/worker/tick", req.url), { method: "POST" }).catch((err) => {
-        console.error("[api] worker tick failed", err);
-      });
-    });
 
     return NextResponse.json({ jobId: job.id, status: job.status });
   } catch (err) {
