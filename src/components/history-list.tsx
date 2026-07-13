@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
+import { useState, useCallback, useEffect, useRef, type KeyboardEvent } from "react";
 import { ArrowRight, Code, FileMd, GlobeHemisphereWest, Trash, Warning } from "@phosphor-icons/react";
 
 type GenerationItem = { id: string; url: string; status: string; at: number };
@@ -29,6 +30,7 @@ function timeAgo(ts: number): string {
 }
 
 export function HistoryList({ generations, scrapes }: { generations: GenerationItem[]; scrapes: ScrapeItem[] }) {
+  const router = useRouter();
   const [confirmDelete, setConfirmDelete] = useState<{ id: string; kind: "scrape" | "generate" } | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
   const [items, setItems] = useState<{ generations: GenerationItem[]; scrapes: ScrapeItem[] }>({
@@ -47,18 +49,24 @@ export function HistoryList({ generations, scrapes }: { generations: GenerationI
         generations: prev.generations.filter((g) => !(confirmDelete.kind === "generate" && g.id === confirmDelete.id)),
         scrapes: prev.scrapes.filter((s) => !(confirmDelete.kind === "scrape" && s.id === confirmDelete.id)),
       }));
+      // Bust Next.js router cache so /history re-fetches from server (soft refresh, keeps client state)
+      router.refresh();
     }
     setConfirmDelete(null);
-  }, [confirmDelete]);
+  }, [confirmDelete, router]);
 
   const handleClear = useCallback(async () => {
-    await Promise.all([
+    const results = await Promise.allSettled([
       ...items.generations.map((g) => fetch(`/api/generations/${g.id}`, { method: "DELETE" })),
       ...items.scrapes.map((s) => fetch(`/api/scrapes/${s.id}`, { method: "DELETE" })),
     ]);
-    setItems({ generations: [], scrapes: [] });
+    const ok = results.every((r) => r.status === "fulfilled" && r.value.ok);
+    if (ok) {
+      setItems({ generations: [], scrapes: [] });
+      router.refresh();
+    }
     setConfirmClear(false);
-  }, [items]);
+  }, [items, router]);
 
   if (total === 0) {
     return (
@@ -180,12 +188,44 @@ function ScrapeRow({ entry, onDelete }: { entry: ScrapeItem; onDelete: () => voi
 }
 
 function Modal({ title, onCancel, onConfirm }: { title: string; onCancel: () => void; onConfirm: () => void }) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  const returnFocusRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    returnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    panelRef.current?.querySelector<HTMLElement>("button")?.focus();
+    return () => {
+      const target = returnFocusRef.current;
+      if (target && document.contains(target)) target.focus();
+    };
+  }, []);
+
+  function onKeyDown(e: KeyboardEvent<HTMLDivElement>) {
+    if (e.key === "Escape") return onCancel();
+    if (e.key !== "Tab") return;
+    const focusable = panelRef.current?.querySelectorAll<HTMLElement>("button") ?? [];
+    if (focusable.length === 0) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  }
+
   return (
     <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={title}
+      onKeyDown={onKeyDown}
       className="fixed inset-0 z-50 grid place-items-center bg-black/40 px-4"
       onClick={onCancel}
     >
-      <div className="w-full max-w-sm rounded-cards border border-ink bg-paper-white p-6 shadow-hard-xl" onClick={(e) => e.stopPropagation()}>
+      <div ref={panelRef} className="w-full max-w-sm rounded-cards border border-ink bg-paper-white p-6 shadow-hard-xl" onClick={(e) => e.stopPropagation()}>
         <span className="mx-auto grid size-12 place-items-center rounded-buttons border border-ink bg-cream shadow-hard">
           <Warning size={22} weight="fill" aria-hidden="true" />
         </span>

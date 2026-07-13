@@ -10,6 +10,7 @@ export const ERROR_CODES = {
   STORAGE_FAILED: "Terjadi kendala saat menyimpan hasil.",
   RATE_LIMITED: "Terlalu banyak percobaan. Coba lagi beberapa saat.",
   QUOTA_EXCEEDED: "Kredit kamu sudah habis. Upgrade paket untuk lanjut.",
+  BACKEND_TRANSIENT: "Backend lagi sibuk, coba lagi dalam beberapa detik.",
 } as const;
 
 export type ErrorCode = keyof typeof ERROR_CODES;

@@ -126,6 +126,6 @@ describe("generateDesign", () => {
     createMock.mockResolvedValue({ choices: [{ finish_reason: "length", message: { content: richDesign } }] });
 
     await expect(generateDesign("https://example.com", extraction)).rejects.toThrow("Generate DESIGN.md gagal");
-    expect(createMock).toHaveBeenCalledTimes(3); // all configured fallback models rejected as truncated
+    expect(createMock).toHaveBeenCalledTimes(2); // both fallback models (default + llama-70b) rejected as truncated
   });
 });

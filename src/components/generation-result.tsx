@@ -8,8 +8,6 @@ import {
   Check,
   Warning,
   CircleNotch,
-  CaretDown,
-  CaretUp,
 } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -60,15 +58,16 @@ const STATUS_LABEL: Record<string, string> = {
 export function GenerationResult({
   id,
   embedded = false,
-  onRetry,
 }: {
   id: string;
   embedded?: boolean;
-  onRetry?: (jobId: string) => void;
 }) {
   const [job, setJob] = useState<Job | null>(null);
   const [copied, setCopied] = useState(false);
-  const [collapsed, setCollapsed] = useState(false);
+  // ponytail: collapsed is always false — collapse toggle was never wired. Kept
+  // the guarded markup rather than churn the whole render; drop the const + the
+  // {collapsed && …} branch when the collapse feature is either built or cut.
+  const collapsed = false;
   const [loadError, setLoadError] = useState<"" | "not_found" | "transient">(
     "",
   );
@@ -188,9 +187,13 @@ export function GenerationResult({
 
   async function copy() {
     if (!markdown) return;
-    await navigator.clipboard.writeText(markdown);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1600);
+    try {
+      await navigator.clipboard.writeText(markdown);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+    } catch {
+      // Clipboard blocked (insecure context / denied permission) — leave label unchanged.
+    }
   }
 
   return (
@@ -271,7 +274,7 @@ export function GenerationResult({
                       : `${remaining} detik`}
                   </p>
                 )}
-                {failed ? <Retry id={id} onRetry={onRetry} /> : null}
+                {failed ? <Retry sourceUrl={job.sourceUrl} /> : null}
               </div>
             </div>
 
@@ -352,10 +355,15 @@ export function GenerationResult({
               </div>
 
               {job.errorMessage ? (
-                <p className="flex items-center gap-2 border-b border-ink bg-red-50 p-4 text-body-sm font-medium text-red-700">
-                  <Warning size={18} weight="fill" aria-hidden="true" />
-                  DESIGN.md belum bisa dibuat. Coba ulangi dari link yang sama.
-                </p>
+                <div className="border-b border-ink bg-red-50 p-4">
+                  <p className="flex items-center gap-2 text-body-sm font-medium text-red-700">
+                    <Warning size={18} weight="fill" aria-hidden="true" />
+                    DESIGN.md belum bisa dibuat. Coba ulangi dari link yang sama.
+                  </p>
+                  {job.errorMessage !== "DESIGN.md belum bisa dibuat. Coba ulangi dari link yang sama." && (
+                    <p className="mt-1 text-caption text-red-500/80">{job.errorMessage}</p>
+                  )}
+                </div>
               ) : null}
 
               <pre className="max-h-[70vh] overflow-auto whitespace-pre-wrap bg-paper-white p-6 text-body-sm leading-7 text-ink">
@@ -436,66 +444,16 @@ function AnimatedLabel({ label }: { label: string }) {
   );
 }
 
-function StatusPill({ status }: { status: string }) {
-  const failed = status === "failed";
-  const done = status === "completed";
-  if (failed)
-    return (
-      <span className="inline-flex text-caption font-medium uppercase tracking-[0.06em] text-red-400">
-        Gagal
-      </span>
-    );
-  return (
-    <span
-      className={`inline-flex items-center gap-2 rounded-pills border px-3 py-1.5 text-caption font-medium uppercase tracking-[0.06em] ${
-        failed
-          ? "border-red-400/50 text-red-400"
-          : done
-            ? "border-mint-edge bg-mint-wash/10 text-mint-edge"
-            : "border-lime-sprint bg-lime-sprint/15 text-lime-sprint"
-      }`}
-    >
-      {!failed && (
-        <span
-          className={`size-2 rounded-full ${done ? "bg-mint-edge" : "bg-lime-sprint"}`}
-        />
-      )}
-      {STATUS_LABEL[status] ?? status}
-    </span>
-  );
-}
 
-function Retry({
-  id,
-  onRetry,
-}: {
-  id: string;
-  onRetry?: (jobId: string) => void;
-}) {
+function Retry({ sourceUrl }: { sourceUrl: string }) {
   const router = useRouter();
-  const [busy, setBusy] = useState(false);
-
-  async function retry() {
-    setBusy(true);
-    try {
-      const res = await fetch(`/api/generations/${id}/retry`, { method: "POST" });
-      const json = await res.json();
-      if (json.jobId) {
-        if (onRetry) onRetry(json.jobId);
-        else router.push(`/`);
-      }
-    } finally {
-      setBusy(false);
-    }
-  }
   return (
     <button
-      disabled={busy}
-      onClick={retry}
-      className="pressable pressable-white mt-4 inline-flex w-full items-center justify-center gap-2 rounded-buttons border border-paper-white bg-lime-sprint px-4 py-2.5 text-body-sm font-medium text-ink shadow-hard-white disabled:opacity-60"
+      onClick={() => router.push(`/?url=${encodeURIComponent(sourceUrl)}`)}
+      className="pressable pressable-white mt-4 inline-flex w-full items-center justify-center gap-2 rounded-buttons border border-paper-white bg-lime-sprint px-4 py-2.5 text-body-sm font-medium text-ink shadow-hard-white"
     >
-      {busy ? <CircleNotch size={18} className="animate-spin" aria-hidden="true" /> : <ArrowClockwise size={18} aria-hidden="true" />}
-      {busy ? "Memproses…" : "Coba lagi"}
+      <ArrowClockwise size={18} aria-hidden="true" />
+      Coba lagi
     </button>
   );
 }

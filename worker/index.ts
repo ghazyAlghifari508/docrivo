@@ -288,7 +288,7 @@ async function crawl(browser: Awaited<ReturnType<typeof chromium.launch>>, job: 
   return { extraction, pagesAnalyzed: pages.length };
 }
 
-async function extractPage(page: Page, domain: string, pageUrl: string) {
+export async function extractPage(page: Page, domain: string, pageUrl: string) {
   return page.evaluate(({ domainArg, pageUrlArg }) => {
     const top = Array.from(document.querySelectorAll<HTMLElement>("body *")).slice(0, 600);
     const colors = new Set<string>();

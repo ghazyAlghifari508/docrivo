@@ -8,6 +8,7 @@ import { rateLimit } from "@/lib/rate-limit";
 import { getUser } from "@/lib/dal";
 import { consumeQuota, refundQuota } from "@/lib/plans";
 import { insforge } from "@/lib/insforge";
+import { retryTransient, isTransient } from "@/lib/retry";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -125,10 +126,15 @@ export async function POST(req: Request) {
 
       return NextResponse.json({ ...result, scrapeId: stored.id });
     } catch (workErr) {
-      // Work failed → the credit was never really used. Give it back.
-      await refundQuota(user.id, "scrape").catch((refundErr) => {
+      // Work failed → the credit was never really used. InsForge is sometimes
+      // transiently unavailable (PGRST002, socket hang up), so retry a few
+      // times before giving up. Refunding is safe to repeat (server-side
+      // quota counters are idempotent on this RPC).
+      try {
+        await retryTransient(() => refundQuota(user.id, "scrape"));
+      } catch (refundErr) {
         console.error("[api] scrape refund failed — credit may be stuck", refundErr);
-      });
+      }
       throw workErr;
     }
   } catch (err) {
@@ -144,7 +150,20 @@ export async function POST(req: Request) {
         { status: 400 },
       );
     }
+    // Non-AppError = infra transient. Surface the real cause so the client
+    // can tell the user "backend hiccup", not "your URL is broken".
     console.error("[api] scrape failed", err);
+    if (isTransient(err)) {
+      return NextResponse.json(
+        {
+          error: {
+            code: "BACKEND_TRANSIENT",
+            message: "Backend lagi sibuk, coba lagi dalam beberapa detik.",
+          },
+        },
+        { status: 503 },
+      );
+    }
     return NextResponse.json(
       { error: { code: "WEBSITE_BLOCKED", message: ERROR_CODES.WEBSITE_BLOCKED } },
       { status: 502 },

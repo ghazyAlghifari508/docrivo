@@ -83,12 +83,3 @@ export async function getOwnedScrape(id: string) {
   }>("scrape_artifacts", { id: `eq.${id}`, user_id: `eq.${user.id}` });
 }
 
-/** Throws 404 if the generation job does not belong to the current user. */
-export async function requireOwnedJob(id: string) {
-  const user = await requireUser();
-  const job = await insforge.maybeSingle<{ id: string; user_id: string | null }>("generation_jobs", {
-    id: `eq.${id}`,
-    select: "id,user_id",
-  });
-  if (!job || job.user_id !== user.id) notFound();
-}

@@ -49,7 +49,7 @@ export function PricingCards({ plans, currentPlan }: { plans: PlanCard[]; curren
         setBusy("");
         return;
       }
-      window.location.href = json.redirectUrl;
+      window.location.assign(json.redirectUrl);
     } catch {
       setError("Jaringan bermasalah. Coba lagi.");
       setBusy("");

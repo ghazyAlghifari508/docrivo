@@ -1,9 +1,8 @@
 "use client";
 
-import { useEffect, useState, type KeyboardEvent } from "react";
+import { useState, type KeyboardEvent } from "react";
 import { FileMd, Code } from "@phosphor-icons/react";
 import { GenerationForm } from "./generation-form";
-import { GenerationResult } from "./generation-result";
 import { HtmlScraper } from "./html-scraper";
 import { UpgradeModal } from "./upgrade-modal";
 
@@ -19,22 +18,21 @@ export function HomeGenerator({
   remainingScrape: number | null;
 }) {
   const [tab, setTab] = useState<Tab>("design");
-  const [jobId, setJobId] = useState("");
   const [quotaOpen, setQuotaOpen] = useState(false);
 
-  // Optimistic local credit: track only the number of successes this session and
-  // derive the display value during render (no effect → no stale-value flicker).
-  // Resets to the server value whenever the server reports a new remaining count.
+  // Optimistic local credit: track successes this session, derive display during
+  // render. Reset both counters when the server reports a new remaining count —
+  // done in render (store-previous-prop pattern) so there's no effect/flicker.
   const [designSpent, setDesignSpent] = useState(0);
   const [scrapeSpent, setScrapeSpent] = useState(0);
-  useEffect(() => setDesignSpent(0), [remainingDesign]);
-  useEffect(() => setScrapeSpent(0), [remainingScrape]);
+  const [prevRemaining, setPrevRemaining] = useState({ design: remainingDesign, scrape: remainingScrape });
+  if (prevRemaining.design !== remainingDesign || prevRemaining.scrape !== remainingScrape) {
+    setPrevRemaining({ design: remainingDesign, scrape: remainingScrape });
+    setDesignSpent(0);
+    setScrapeSpent(0);
+  }
   const design = remainingDesign == null ? null : Math.max(0, remainingDesign - designSpent);
   const scrape = remainingScrape == null ? null : Math.max(0, remainingScrape - scrapeSpent);
-
-  function showJob(id: string) {
-    setJobId(id);
-  }
 
   function onTabKeyDown(e: KeyboardEvent<HTMLButtonElement>) {
     const tabs: Tab[] = ["design", "scrape"];
@@ -84,26 +82,9 @@ export function HomeGenerator({
             guest={!authed}
             remaining={design}
             onQuotaExceeded={() => setQuotaOpen(true)}
-            onCreated={(id) => {
-              setDesignSpent((s) => s + 1);
-              showJob(id);
-            }}
+            onCreated={() => setDesignSpent((s) => s + 1)}
           />
         </div>
-
-        {jobId ? (
-          <section className="mt-20 border-t border-rule bg-paper-white pt-16 text-left">
-            <div className="mb-8 text-center">
-              <span className="text-caption font-semibold uppercase tracking-[0.08em] text-muted-gray">
-                DESIGN.md siap pakai
-              </span>
-              <h2 className="mt-3 text-heading font-semibold leading-heading tracking-heading">
-                Tempel ke AI coding assistant agar hasil UI lebih <span className="emph">terarah</span>.
-              </h2>
-            </div>
-            <GenerationResult id={jobId} embedded onRetry={showJob} />
-          </section>
-        ) : null}
       </div>
 
       <div id="scrape-panel" role="tabpanel" aria-labelledby="scrape-tab" hidden={tab !== "scrape"} className="mx-[calc(50%-50vw)] w-screen px-3 sm:px-5">

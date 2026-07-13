@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowRight, GlobeHemisphereWest, Warning } from "@phosphor-icons/react";
 import { useState, type FormEvent } from "react";
 
@@ -15,9 +16,11 @@ export function GenerationForm({
   guest?: boolean;
   remaining?: number | null;
   onQuotaExceeded?: () => void;
-  onCreated: (jobId: string) => void;
+  onCreated?: (jobId: string) => void;
 }) {
-  const [url, setUrl] = useState("");
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [url, setUrl] = useState(searchParams.get("url") ?? "");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const dark = tone === "dark";
@@ -39,6 +42,10 @@ export function GenerationForm({
         body: JSON.stringify({ url }),
       });
       const json = await res.json();
+      if (res.status === 401) {
+        router.push("/login");
+        return;
+      }
       if (res.status === 402) {
         onQuotaExceeded?.();
         return;
@@ -47,7 +54,8 @@ export function GenerationForm({
         setError("DESIGN.md gagal dibuat. Pastikan link publik bisa dibuka, lalu coba lagi.");
         return;
       }
-      onCreated(json.jobId);
+      onCreated?.(json.jobId);
+      router.push(`/generations/${json.jobId}`);
     } catch {
       setError("Jaringan bermasalah. Coba lagi sebentar lagi.");
     } finally {
@@ -58,11 +66,7 @@ export function GenerationForm({
   return (
     <form onSubmit={submit} className="w-full">
       <div className="flex flex-col gap-3 sm:flex-row">
-        <div
-          className={`flex h-14 flex-1 items-center gap-3 rounded-buttons border border-ink px-4 shadow-hard ${
-            dark ? "bg-paper-white" : "bg-paper-white"
-          }`}
-        >
+        <div className="flex h-14 flex-1 items-center gap-3 rounded-buttons border border-ink bg-paper-white px-4 shadow-hard">
           <GlobeHemisphereWest size={20} weight="regular" className="shrink-0 text-muted" aria-hidden="true" />
           <label htmlFor="url" className="sr-only">
 Website referensi

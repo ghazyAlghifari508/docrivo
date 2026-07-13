@@ -58,7 +58,8 @@ export function FaqGroups({ groups }: { groups: Group[] }) {
                     isOpen ? "mt-3 grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
                   }`}
                 >
-                  <p className="overflow-hidden text-body-sm leading-7 text-muted">{a}</p>
+                  {/* ponytail: grid-rows-[0fr] hides visually but not from AT; hidden removes from a11y tree */}
+                  <p hidden={!isOpen} className="overflow-hidden text-body-sm leading-7 text-muted">{a}</p>
                 </div>
               </div>
             );

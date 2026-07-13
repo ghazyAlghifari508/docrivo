@@ -22,16 +22,14 @@ export type Entitlement = {
 export type QuotaKind = "designmd" | "scrape";
 
 export const getPlans = cache(async (): Promise<Plan[]> => {
-  return insforge.select<Plan>("plans", { order: "sort_order.asc" });
+  return insforge.rpc<Plan[]>("list_plans");
 });
 
 /** Current user's entitlement. Returns a virtual free row if none exists yet
  *  (the row is created lazily on first quota consume). */
 export async function getEntitlement(userId: string): Promise<Entitlement> {
-  const row = await insforge.maybeSingle<Entitlement>("user_entitlements", {
-    user_id: `eq.${userId}`,
-    select: "user_id,plan,designmd_used,scrape_used",
-  });
+  const rows = await insforge.rpc<Entitlement[]>("get_user_entitlement", { p_user: userId });
+  const row = rows?.[0];
   return row ?? { user_id: userId, plan: "free", designmd_used: 0, scrape_used: 0 };
 }
 

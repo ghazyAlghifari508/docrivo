@@ -4,8 +4,12 @@ import "server-only";
 // no Snap.js needed. Verification is poll-based (getTransactionStatus), so no
 // webhook/tunnel is required for localhost.
 
-const SNAP_URL = "https://app.sandbox.midtrans.com/snap/v1/transactions";
-const STATUS_URL = "https://api.sandbox.midtrans.com/v2";
+// Set MIDTRANS_PRODUCTION=true in prod env to hit live endpoints. Default sandbox.
+const IS_PROD = process.env.MIDTRANS_PRODUCTION === "true";
+const SNAP_URL = IS_PROD
+  ? "https://app.midtrans.com/snap/v1/transactions"
+  : "https://app.sandbox.midtrans.com/snap/v1/transactions";
+const STATUS_URL = IS_PROD ? "https://api.midtrans.com/v2" : "https://api.sandbox.midtrans.com/v2";
 const TIMEOUT_MS = 20_000;
 
 function serverKey() {

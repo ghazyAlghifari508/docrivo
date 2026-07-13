@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useRef, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { Lock, X } from "@phosphor-icons/react";
 
@@ -22,14 +22,17 @@ export function UpgradeModal({
   fixed?: boolean;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => setMounted(true), []);
+  const returnFocusRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     if (!open) return;
+    returnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const first = panelRef.current?.querySelector<HTMLElement>("a,button");
     first?.focus();
+    return () => {
+      const target = returnFocusRef.current;
+      if (target && document.contains(target)) target.focus();
+    };
   }, [open]);
 
   if (!open) return null;
@@ -88,5 +91,5 @@ export function UpgradeModal({
     </div>
   );
 
-  return fixed && mounted ? createPortal(modal, document.body) : modal;
+  return fixed && typeof document !== "undefined" ? createPortal(modal, document.body) : modal;
 }
