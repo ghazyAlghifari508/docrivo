@@ -53,4 +53,7 @@ next-env.d.ts
 .qwen
 .roo
 .trae
-.windsurf
+/.windsurf
+
+# knowledge-graph cache (regenerated on demand)
+/graphify-out/cache
