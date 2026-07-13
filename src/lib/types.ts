@@ -39,6 +39,32 @@ export interface FontToken {
   role?: string;
 }
 
+export interface TypographyRole {
+  role: "h1" | "h2" | "h3" | "body" | "nav" | string;
+  family: string;
+  weight: string;
+  size: string;
+  lineHeight: string;
+  letterSpacing: string;
+}
+
+export interface CtaButton {
+  text?: string;
+  family: string;
+  weight: string;
+  size: string;
+  bg: string;
+  color: string;
+  radius: string;
+  padding: string;
+  border: string;
+}
+
+export interface FontFace {
+  family: string;
+  weights: string;
+}
+
 export interface DesignExtraction {
   colors: ColorToken[];
   typography: FontToken[];
@@ -63,6 +89,9 @@ export interface DesignExtraction {
   }>;
   surfaces?: Array<{ selector: string; background: string; color: string }>;
   imagery?: { imageCount: number; examples: string[] };
+  typographyRoles?: TypographyRole[];
+  ctaButtons?: CtaButton[];
+  fontFaces?: FontFace[];
   metadata: {
     title?: string;
     description?: string;

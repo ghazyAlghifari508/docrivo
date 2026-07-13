@@ -103,6 +103,9 @@ async function crawl(browser: Awaited<ReturnType<typeof chromium.launch>>, job: 
   const failed: string[] = [];
   const allColors = new Set<string>();
   const allFonts = new Set<string>();
+  let mergedTypographyRoles: DesignExtraction["typographyRoles"] = [];
+  let mergedCtaButtons: DesignExtraction["ctaButtons"] = [];
+  let mergedFontFaces: DesignExtraction["fontFaces"] = [];
   const components = new Set<string>();
   const spacing = new Set<string>();
   const radii = new Set<string>();
@@ -172,7 +175,9 @@ async function crawl(browser: Awaited<ReturnType<typeof chromium.launch>>, job: 
 
       const {
         colors,
-        fonts,
+        typographyRoles: pageTypographyRoles,
+        ctaButtons: pageCtaButtons,
+        fontFaces: pageFontFaces,
         links,
         foundComponents,
         foundAssets,
@@ -183,7 +188,7 @@ async function crawl(browser: Awaited<ReturnType<typeof chromium.launch>>, job: 
         imagery,
       } = await extractPage(page, base.hostname, url);
       colors.forEach((c) => allColors.add(c));
-      fonts.forEach((f) => allFonts.add(f));
+      pageTypographyRoles.forEach((r) => allFonts.add(r.family));
       foundComponents.forEach((c) => components.add(c));
       tokens.spacing.forEach((v) => spacing.add(v));
       tokens.radii.forEach((v) => radii.add(v));
@@ -200,6 +205,13 @@ async function crawl(browser: Awaited<ReturnType<typeof chromium.launch>>, job: 
         links
           .filter((link) => !seen.has(link))
           .forEach((link) => queue.push({ url: link, depth: 1 }));
+        // Keep role typography + CTA samples from the FIRST page (depth 0 root) —
+        // it carries the site's brand intent and layout primitives. Other pages
+        // (case studies, blog, etc.) over-index on internal content and dilute
+        // the style signal with their own typography.
+        mergedTypographyRoles = pageTypographyRoles;
+        mergedCtaButtons = pageCtaButtons;
+        mergedFontFaces = pageFontFaces;
       }
 
       const [crawled] = await must<{ id: string }[]>(
@@ -248,6 +260,9 @@ async function crawl(browser: Awaited<ReturnType<typeof chromium.launch>>, job: 
     typography: [...allFonts].slice(0, 8).map((family) => ({ family })),
     layout_patterns: inferLayoutPatterns([...components]),
     components: [...components],
+    typographyRoles: mergedTypographyRoles,
+    ctaButtons: mergedCtaButtons,
+    fontFaces: mergedFontFaces,
     tokens: {
       spacing: [...spacing].slice(0, 40),
       radii: [...radii].slice(0, 24),
@@ -277,7 +292,6 @@ async function extractPage(page: Page, domain: string, pageUrl: string) {
   return page.evaluate(({ domainArg, pageUrlArg }) => {
     const top = Array.from(document.querySelectorAll<HTMLElement>("body *")).slice(0, 600);
     const colors = new Set<string>();
-    const fonts = new Set<string>();
     const components = new Set<string>();
     const spacing = new Set<string>();
     const radii = new Set<string>();
@@ -307,7 +321,9 @@ async function extractPage(page: Page, domain: string, pageUrl: string) {
     for (const el of top) {
       const cs = getComputedStyle(el);
       [cs.color, cs.backgroundColor, cs.borderColor, cs.outlineColor].forEach((c) => keep(c) && colors.add(c));
-      if (cs.fontFamily) fonts.add(cs.fontFamily.split(",")[0].replaceAll('"', "").trim());
+      // Per-role typography (h1, h2, h3, body, nav) is captured separately via
+      // typographyRoles so it carries weight + size — family-only above
+      // threw it away and let the LLM soften headings.
       [cs.marginTop, cs.marginRight, cs.marginBottom, cs.marginLeft, cs.paddingTop, cs.paddingRight, cs.paddingBottom, cs.paddingLeft, cs.gap, cs.rowGap, cs.columnGap].forEach((v) => px(v) && spacing.add(v));
       [cs.borderRadius, cs.borderTopLeftRadius, cs.borderTopRightRadius].forEach((v) => px(v) && radii.add(v));
       if (keep(cs.boxShadow)) shadows.add(cs.boxShadow);
@@ -345,6 +361,53 @@ async function extractPage(page: Page, domain: string, pageUrl: string) {
     sample("article,.card,[class*=card]", "card", 12);
     sample("footer", "footer", 2);
 
+    // Per-role typography with REAL weight/size — the single highest-value
+    // fidelity signal. Family-name-only lets the LLM guess weights and soften
+    // headings; capturing 700/64px for h1 vs 400/16px for body pins hierarchy.
+    const fam = (cs: CSSStyleDeclaration) => cs.fontFamily.split(",")[0].replaceAll('"', "").trim();
+    const typographyRoles: Array<{ role: string; family: string; weight: string; size: string; lineHeight: string; letterSpacing: string }> = [];
+    for (const [role, sel] of [["h1", "h1"], ["h2", "h2"], ["h3", "h3"], ["body", "p"], ["nav", "nav a,header a"]] as const) {
+      const el = document.querySelector<HTMLElement>(sel);
+      if (!el) continue;
+      const cs = getComputedStyle(el);
+      typographyRoles.push({ role, family: fam(cs), weight: cs.fontWeight, size: cs.fontSize, lineHeight: cs.lineHeight, letterSpacing: cs.letterSpacing });
+    }
+
+    // Primary CTAs: score buttons by visual prominence (colored bg + bold weight
+    // + padding + radius) so the real pill button beats plain nav links, which
+    // otherwise dominate the DOM-order sample and hide the site's actual CTA.
+    const ctaButtons: Array<{ text?: string; family: string; weight: string; size: string; bg: string; color: string; radius: string; padding: string; border: string }> = [];
+    const scoreBtn = (cs: CSSStyleDeclaration) =>
+      (keep(cs.backgroundColor) ? 3 : 0) + Math.max(0, ((parseInt(cs.fontWeight) || 400) - 400) / 100) + (parseFloat(cs.paddingLeft) > 8 ? 1 : 0) + (keep(cs.borderRadius) ? 1 : 0);
+    Array.from(document.querySelectorAll<HTMLElement>("button,a[href],[role=button]"))
+      .map((el) => ({ el, cs: getComputedStyle(el), s: 0 }))
+      .map((o) => ({ ...o, s: scoreBtn(o.cs) }))
+      .sort((a, b) => b.s - a.s)
+      .slice(0, 8)
+      .forEach(({ el, cs }) => {
+        ctaButtons.push({
+          text: el.innerText?.trim().replace(/\s+/g, " ").slice(0, 40) || undefined,
+          family: fam(cs), weight: cs.fontWeight, size: cs.fontSize,
+          bg: cs.backgroundColor, color: cs.color, radius: cs.borderRadius,
+          padding: `${cs.paddingTop} ${cs.paddingRight}`, border: `${cs.borderWidth} ${cs.borderStyle} ${cs.borderColor}`,
+        });
+      });
+
+    // @font-face identity: the true webfont family + its declared weight axis.
+    const fontFaces: Array<{ family: string; weights: string }> = [];
+    for (const sheet of Array.from(document.styleSheets)) {
+      try {
+        for (const rule of Array.from(sheet.cssRules)) {
+          if (!/@font-face/.test(rule.cssText)) continue;
+          const family = rule.cssText.match(/font-family:\s*([^;]+)/i)?.[1]?.replace(/["']/g, "").trim();
+          const weights = rule.cssText.match(/font-weight:\s*([^;]+)/i)?.[1]?.trim() ?? "";
+          if (family && fontFaces.length < 12 && !fontFaces.some((f) => f.family === family && f.weights === weights)) {
+            fontFaces.push({ family, weights });
+          }
+        }
+      } catch {}
+    }
+
     const links = Array.from(document.querySelectorAll<HTMLAnchorElement>("a[href]"))
       .flatMap((a) => {
         try {
@@ -378,11 +441,23 @@ async function extractPage(page: Page, domain: string, pageUrl: string) {
 
     return {
       colors: [...colors],
-      fonts: [...fonts],
-      links,
+      links: Array.from(document.querySelectorAll<HTMLAnchorElement>("a[href]"))
+        .flatMap((a) => {
+          try {
+            const u = new URL(a.getAttribute("href") || a.href, pageUrlArg);
+            return u.hostname === domainArg ? [u.href.split("#")[0]] : [];
+          } catch {
+            return [];
+          }
+        })
+        .filter((href) => !/\.(pdf|zip|exe|dmg|pkg|msi)$/i.test(href))
+        .slice(0, 20),
       foundComponents: [...components],
       foundAssets: assets,
       theme: "unknown",
+      typographyRoles,
+      ctaButtons,
+      fontFaces,
       tokens: {
         spacing: [...spacing],
         radii: [...radii],
