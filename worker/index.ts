@@ -4,7 +4,6 @@ import http from "node:http";
 import { chromium, type Page } from "playwright";
 import { generateDesign } from "../src/lib/ai-provider";
 import { AppError } from "../src/lib/errors";
-import { fetchHtml } from "../src/lib/fetch-html";
 import { insforge } from "../src/lib/insforge-core";
 import { BROWSER_UA, DESKTOP_VIEWPORT, guardContext } from "../src/lib/render-page";
 import { validateUrl } from "../src/lib/url-validator";
@@ -15,15 +14,24 @@ const PORT = Number(process.env.PORT ?? 8080);
 
 export async function main() {
   serveHttp();
+  let backoff = POLL_MS;
   console.log(`[worker] polling every ${POLL_MS}ms`);
   for (;;) {
     try {
       const job = await claimNextJob();
-      if (job) await processJob(job);
+      if (job) {
+        await processJob(job);
+        backoff = POLL_MS; // reset after a successful job
+      } else {
+        backoff = Math.min(backoff * 1.5, 30_000); // no jobs → easier on nano
+      }
     } catch (err) {
+      // Transient infra errors (PGRST002, socket hang) are common on a nano
+      // instance under load. Wait longer each cycle instead of spamming.
       console.error("[worker] poll failed", err);
+      backoff = Math.min(backoff * 2, 30_000);
     }
-    await sleep(POLL_MS);
+    await sleep(backoff);
   }
 }
 
@@ -42,20 +50,10 @@ function serveHttp() {
     .listen(PORT, () => console.log(`[worker] http on :${PORT}`));
 }
 
-export async function claimJob(jobId: string): Promise<GenerationJob | null> {
-  const [claimed] = await insforge.update<GenerationJob>("generation_jobs", { id: jobId, status: "queued" }, {
-    status: "crawling",
-    progress: 20,
-    started_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  });
-  return claimed ?? null;
-}
-
 export async function processJob(job: GenerationJob) {
   try {
     await log(job.id, "info", "job_started", job.source_url);
-    const browser = await chromium.launch({ headless: true, args: ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu", "--disable-software-rasterizer"] });
+    const browser = await chromium.launch({ headless: true, args: ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu", "--disable-software-rasterizer", "--headless=chrome", "--proxy-auto-detect"] });
     try {
       const result = await crawl(browser, job);
       await setStatus(job.id, "generating");
@@ -141,11 +139,19 @@ async function crawl(browser: Awaited<ReturnType<typeof chromium.launch>>, job: 
       serviceWorkers: "block",
     }));
     await guardContext(context);
+    // ponytail: tsx injects __name() helper into arrow functions. When
+    // page.evaluate serialises the fn to string the helper leaks into browser
+    // where it doesn't exist. Shim it at the context level so every page has it.
+    await context.addInitScript("window.__name=(fn)=>fn");
     const page = await context.newPage();
     let statusCode = 200;
     try {
       const res = await page.goto(url, { waitUntil: "domcontentloaded", timeout: 35_000 });
       statusCode = res?.status() ?? 200;
+      await page.waitForLoadState("networkidle", { timeout: 8_000 }).catch(() => {});
+      // Scroll so lazy images + scroll-in animations fire before the full-page
+      // screenshot; otherwise the capture shows unloaded imgs and opacity:0 blocks.
+      await autoScrollPage(page).catch(() => {});
       await page.waitForLoadState("networkidle", { timeout: 8_000 }).catch(() => {});
       await page.waitForTimeout(600);
       const pageTitle = await page.title();
@@ -405,6 +411,26 @@ function shouldSkip(url: string) {
   return /\b(login|signin|signup|register|account|checkout|cart|payment|admin)\b/i.test(url);
 }
 
+/** Scroll top→bottom→top to trigger lazy images + scroll-in animations before
+ * the screenshot. Bounded so an infinite-scroll page can't hang the job. */
+async function autoScrollPage(page: Page): Promise<void> {
+  await page.evaluate(async () => {
+    const step = 600, delay = 100, maxSteps = 60;
+    await new Promise<void>((resolve) => {
+      let steps = 0;
+      const timer = setInterval(() => {
+        window.scrollBy(0, step);
+        steps += 1;
+        if (steps >= maxSteps || window.scrollY + window.innerHeight >= document.body.scrollHeight) {
+          clearInterval(timer);
+          window.scrollTo(0, 0);
+          resolve();
+        }
+      }, delay);
+    });
+  });
+}
+
 export async function claimNextJob(): Promise<GenerationJob | null> {
   const result = await insforge.rpc<GenerationJob | GenerationJob[] | null>("claim_next_job");
   if (Array.isArray(result)) return result[0] ?? null;
@@ -418,7 +444,9 @@ async function setStatus(jobId: string, status: GenerationJob["status"], extra: 
   const stageProgress: Record<string, number> = { queued: 0, crawling: 20, capturing: 40, extracting: 60, generating: 80, completed: 100, failed: 0, cancelled: 0 };
   // Use explicit progress from caller (per-page loop) else fall back to stage default.
   let prog = (extra.progress as number | undefined) ?? stageProgress[status];
-  const { progress: _omit, ...rest } = extra as Record<string, unknown> & { progress?: number };
+  // Drop caller's progress from the spread so the clamped `prog` below always wins.
+  const rest = { ...extra };
+  delete (rest as { progress?: number }).progress;
   // Clamp to all-time high so progress is monotonic.
   const prev = monotonicProgress.get(jobId) ?? 0;
   if (prog < prev) prog = prev;
@@ -445,8 +473,11 @@ function isPersistenceError(err: unknown) {
 }
 
 function errorDetails(err: unknown) {
-  if (!(err instanceof Error)) return String(err);
-  return JSON.stringify({ name: err.name, message: err.message, stack: err.stack });
+  // Return a plain object, not a JSON string — `log` passes this straight into
+  // the JSONB `context` column, which stringifies the row. Pre-stringifying
+  // would double-encode it into a JSON string literal.
+  if (!(err instanceof Error)) return { message: String(err) };
+  return { name: err.name, message: err.message, stack: err.stack };
 }
 
 async function failJob(jobId: string, code: string, message: string) {
@@ -480,6 +511,8 @@ function sleep(ms: number) {
 }
 
 if (process.argv[1]?.replaceAll("\\", "/").endsWith("worker/index.ts")) {
+  // Log stray rejections instead of letting Node exit(1) with no context.
+  process.on("unhandledRejection", (err) => console.error("[worker] unhandledRejection", err));
   main().catch((err) => {
     console.error(err);
     process.exit(1);

@@ -25,7 +25,7 @@ let browserPromise: Promise<Browser> | null = null;
 async function getBrowser(): Promise<Browser> {
   if (!browserPromise) {
     browserPromise = chromium
-      .launch({ headless: true, args: ["--no-sandbox", "--disable-dev-shm-usage"] })
+      .launch({ headless: true, args: ["--no-sandbox", "--disable-dev-shm-usage", "--headless=chrome", "--proxy-auto-detect"] })
       .then((b) => {
         b.on("disconnected", () => {
           browserPromise = null;
@@ -40,9 +40,16 @@ async function getBrowser(): Promise<Browser> {
   return browserPromise;
 }
 
+// Per-host DNS decision cache. A single crawled page fires 50-100 subresource
+// requests, mostly to a handful of hosts — resolving each host once cuts the
+// SSRF check from ~50 DNS lookups/page to a few. TTL bounds staleness.
+const hostBlockCache = new Map<string, { blocked: boolean; at: number }>();
+const HOST_CACHE_TTL_MS = 60_000;
+
 /**
  * SSRF guard for browser subresource requests: block loopback / private / cloud
  * metadata targets (the top-level URL is already vetted by validateUrl upstream).
+ * data:/blob: are allowed — they carry no network I/O, so there is no SSRF risk.
  */
 export async function isBlockedRequestUrl(raw: string): Promise<boolean> {
   let u: URL;
@@ -56,12 +63,18 @@ export async function isBlockedRequestUrl(raw: string): Promise<boolean> {
   const host = u.hostname.toLowerCase().replace(/^\[|\]$/g, "");
   if (BLOCK_HOSTS.has(host) || host.endsWith(".localhost")) return true;
   if (isIP(host)) return isPrivateIp(host);
+
+  const cached = hostBlockCache.get(host);
+  if (cached && Date.now() - cached.at < HOST_CACHE_TTL_MS) return cached.blocked;
+  let blocked: boolean;
   try {
     const addresses = await lookup(host, { all: true });
-    return !addresses.length || addresses.some(({ address }) => isPrivateIp(address));
+    blocked = !addresses.length || addresses.some(({ address }) => isPrivateIp(address));
   } catch {
-    return true;
+    blocked = true;
   }
+  hostBlockCache.set(host, { blocked, at: Date.now() });
+  return blocked;
 }
 
 /** Attach the SSRF request filter to a context so every request is fetched by Node's IP-pinned proxy. */
@@ -137,6 +150,31 @@ export async function guardContext(context: BrowserContext): Promise<void> {
   });
 }
 
+/**
+ * Scroll top→bottom→top to trigger lazy images and scroll-in animations, then
+ * settle. Bounded by step count so an infinite-scroll page can't hang the
+ * render. Returns to top so the serialized DOM/screenshot starts at the hero.
+ */
+async function autoScroll(page: import("playwright").Page): Promise<void> {
+  await page.evaluate(async () => {
+    const step = 600;
+    const delay = 100;
+    const maxSteps = 60; // 60 × 600px = 36000px ceiling; enough for long pages
+    await new Promise<void>((resolve) => {
+      let steps = 0;
+      const timer = setInterval(() => {
+        window.scrollBy(0, step);
+        steps += 1;
+        if (steps >= maxSteps || window.scrollY + window.innerHeight >= document.body.scrollHeight) {
+          clearInterval(timer);
+          window.scrollTo(0, 0);
+          resolve();
+        }
+      }, delay);
+    });
+  });
+}
+
 export type RenderedPage = { html: string; status: number; finalUrl: string };
 
 /**
@@ -160,6 +198,12 @@ export async function renderPage(url: string): Promise<RenderedPage> {
     try {
       const res = await page.goto(url, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT_MS });
       status = res?.status() ?? 0;
+      await page.waitForLoadState("networkidle", { timeout: IDLE_TIMEOUT_MS }).catch(() => {});
+      // Scroll the whole page before reading the DOM: lazy-loaded images
+      // (loading="lazy" / IntersectionObserver) and scroll-triggered entrance
+      // animations only fire once their element enters the viewport. Without
+      // this they serialize as unloaded <img> and opacity:0 elements.
+      await autoScroll(page).catch(() => {});
       await page.waitForLoadState("networkidle", { timeout: IDLE_TIMEOUT_MS }).catch(() => {});
       await page.waitForTimeout(SETTLE_MS);
     } catch (err) {

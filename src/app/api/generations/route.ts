@@ -1,11 +1,12 @@
-import { after, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { z } from "zod";
 import { AppError, ERROR_CODES } from "@/lib/errors";
 import { insforge } from "@/lib/insforge";
 import { rateLimit } from "@/lib/rate-limit";
 import { validateUrl } from "@/lib/url-validator";
 import { getUser } from "@/lib/dal";
-import { consumeQuota } from "@/lib/plans";
+import { consumeQuota, refundQuota } from "@/lib/plans";
+import { isTransient } from "@/lib/retry";
 
 const Body = z.object({
   url: z.string().min(1),
@@ -18,6 +19,7 @@ const Body = z.object({
 });
 
 export async function POST(req: Request) {
+  let refund: (() => Promise<void>) | null = null;
   try {
     const user = await getUser();
     if (!user) {
@@ -27,8 +29,8 @@ export async function POST(req: Request) {
       );
     }
 
-    const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "local";
-    if (!(await rateLimit(`generations:${ip}`))) {
+    // Key by user.id (authenticated) so NAT-shared IPs don't throttle each other.
+    if (!(await rateLimit(`generations:${user.id}`))) {
       return NextResponse.json(
         { error: { code: "RATE_LIMITED", message: ERROR_CODES.RATE_LIMITED } },
         { status: 429 },
@@ -49,6 +51,8 @@ export async function POST(req: Request) {
         { status: 402 },
       );
     }
+    // Credit is spent; refund it if job creation below throws.
+    refund = () => refundQuota(user.id, "designmd");
 
     const [job] = await insforge.insert<{ id: string; status: string }>(
       "generation_jobs",
@@ -67,8 +71,10 @@ export async function POST(req: Request) {
     );
 
 
+    refund = null; // job created — credit is now legitimately spent
     return NextResponse.json({ jobId: job.id, status: job.status });
   } catch (err) {
+    if (refund) await refund().catch((e) => console.error("[api] quota refund failed", e));
     if (err instanceof AppError) {
       return NextResponse.json(
         { error: { code: err.code, message: err.message } },
@@ -82,6 +88,14 @@ export async function POST(req: Request) {
       );
     }
     console.error("[api] create generation failed", err);
+    // InsForge timeout/blip (plain Error "failed 504", PGRST002, socket hang) —
+    // tell the client to retry instead of a misleading "storage failed" 500.
+    if (isTransient(err)) {
+      return NextResponse.json(
+        { error: { code: "BACKEND_TRANSIENT", message: ERROR_CODES.BACKEND_TRANSIENT } },
+        { status: 503 },
+      );
+    }
     return NextResponse.json(
       { error: { code: "STORAGE_FAILED", message: ERROR_CODES.STORAGE_FAILED } },
       { status: 500 },

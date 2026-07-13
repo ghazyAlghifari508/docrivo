@@ -1,6 +1,7 @@
-import { after, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { insforge } from "@/lib/insforge";
 import { getUser } from "@/lib/dal";
+import { isTransient } from "@/lib/retry";
 
 type JobRow = {
   id: string;
@@ -28,13 +29,26 @@ export async function GET(
     return NextResponse.json({ error: { code: "UNAUTHORIZED" } }, { status: 401 });
   }
 
-  const job = await insforge.maybeSingle<JobRow>("generation_jobs", { id: `eq.${id}` });
+  let job: JobRow | null;
+  try {
+    job = await insforge.maybeSingle<JobRow>("generation_jobs", { id: `eq.${id}` });
+  } catch (err) {
+    // InsForge timeout/blip on the poll path. Return 503 so the client's poller
+    // retries instead of surfacing a 500 and crashing Next's error normalizer.
+    if (isTransient(err)) {
+      console.warn("[api] job detail transient", err);
+      return NextResponse.json({ error: { code: "BACKEND_TRANSIENT" } }, { status: 503 });
+    }
+    throw err;
+  }
   if (!job || job.user_id !== user.id) {
     return NextResponse.json({ error: { code: "NOT_FOUND" } }, { status: 404 });
   }
 
 
-  const [pages, assets, document] = await Promise.all([
+  // allSettled, not all: a failed pages/assets query must not hide an existing
+  // DESIGN.md from the polling client. Each falls back to empty/null on reject.
+  const [pagesR, assetsR, documentR] = await Promise.allSettled([
     insforge.select("crawled_pages", {
       job_id: `eq.${id}`,
       select: "id,url,title,status_code,screenshot_desktop_url,created_at",
@@ -50,6 +64,12 @@ export async function GET(
       select: "design_md,implementation_prompt",
     }),
   ]);
+  for (const r of [pagesR, assetsR, documentR]) {
+    if (r.status === "rejected") console.error("[api] job detail sub-query failed", r.reason);
+  }
+  const pages = pagesR.status === "fulfilled" ? pagesR.value : [];
+  const assets = assetsR.status === "fulfilled" ? assetsR.value : [];
+  const document = documentR.status === "fulfilled" ? documentR.value : null;
 
   return NextResponse.json({
     id: job.id,

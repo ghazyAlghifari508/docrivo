@@ -74,7 +74,9 @@ export async function scrapeHtml(rawUrl: string, attemptNumber?: number) {
   const { renderPage, DESKTOP_VIEWPORT } = await import("./render-page");
   const rendered = await renderPage(url.href);
   const capturedAt = new Date().toISOString();
-  const html = withBaseHref(await inlineStyles(rendered.html, rendered.finalUrl), rendered.finalUrl);
+  const html = forceDesktopViewport(
+    withBaseHref(await inlineStyles(rendered.html, rendered.finalUrl), rendered.finalUrl),
+  );
   const previewHtml = rewritePreviewAssets(html, rendered.finalUrl);
   return {
     sourceUrl: rendered.finalUrl,
@@ -178,12 +180,33 @@ export async function inlineStyles(html: string, pageUrl: string) {
   const styles = await Promise.all(stylesheetHrefs(html, pageUrl).map(async (href) => {
     try {
       const css = await fetchHtml(href);
-      return `<style data-docrivo-inline="${href}">${css.html.slice(0, 120_000)}</style>`;
+      const safeHref = href.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+      // ponytail: 512k holds a full Tailwind build (~300-400k). 120k chopped the
+      // desktop @media breakpoints off the tail, so previews lost their layout.
+      // Bump if a site ships a genuinely larger single sheet.
+      return `<style data-docrivo-inline="${safeHref}">${css.html.slice(0, 512_000)}</style>`;
     } catch {
       return "";
     }
   }));
   return html.replace("</head>", `${styles.join("\n")}</head>`);
+}
+
+/**
+ * Pin the layout viewport to desktop width. The site was captured at 1440px;
+ * `width=device-width` makes the saved page re-evaluate its media queries at
+ * whatever width it's later opened in (a phone, a narrow window) and collapse to
+ * its mobile layout. `width=1440` keeps mobile browsers on the desktop layout.
+ * Desktop browsers ignore this meta entirely — for them the preview iframe is
+ * force-sized to 1440px and visually scaled instead (see scrape-detail.tsx).
+ */
+export const DESKTOP_WIDTH = 1440;
+function forceDesktopViewport(html: string) {
+  const tag = `<meta name="viewport" content="width=${DESKTOP_WIDTH}">`;
+  if (/<meta\b[^>]*name=["']viewport["'][^>]*>/i.test(html)) {
+    return html.replace(/<meta\b[^>]*name=["']viewport["'][^>]*>/i, tag);
+  }
+  return /<head[^>]*>/i.test(html) ? html.replace(/<head[^>]*>/i, (m) => `${m}${tag}`) : `${tag}${html}`;
 }
 
 /** Absolutize <base> so relative assets in the preview resolve against the source origin. */

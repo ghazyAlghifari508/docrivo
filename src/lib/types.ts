@@ -8,17 +8,6 @@ export type JobStatus =
   | "failed"
   | "cancelled";
 
-export const STATUS_PROGRESS: Record<JobStatus, number> = {
-  queued: 0,
-  crawling: 20,
-  capturing: 40,
-  extracting: 60,
-  generating: 80,
-  completed: 100,
-  failed: 100,
-  cancelled: 100,
-};
-
 export interface GenerationJob {
   id: string;
   session_id: string | null;

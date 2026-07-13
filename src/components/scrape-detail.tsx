@@ -142,13 +142,7 @@ export function ScrapeDetail({ id }: { id: string }) {
             </div>
           </div>
           {view === "preview" ? (
-            <iframe
-              title={`Preview ${item.sourceUrl}`}
-              srcDoc={item.previewHtml}
-              sandbox="allow-scripts"
-              referrerPolicy="no-referrer"
-              className="h-[calc(100dvh-150px)] min-h-[620px] w-full bg-paper-white"
-            />
+            <DesktopPreview title={`Preview ${item.sourceUrl}`} srcDoc={item.previewHtml} />
           ) : (
             <pre tabIndex={0} aria-label="Kode HTML hasil scrape" className="h-[calc(100dvh-150px)] min-h-[620px] overflow-auto bg-[#111] p-5 text-[12px] leading-5 text-paper-white">
               <code>{item.html}</code>
@@ -157,6 +151,55 @@ export function ScrapeDetail({ id }: { id: string }) {
         </div>
       </section>
     </main>
+  );
+}
+
+/**
+ * Renders the scraped page at a fixed 1440px layout width, then visually scales
+ * it down to fit the container. Desktop browsers key media queries off the real
+ * iframe width, so a full-width iframe on a laptop reads as ~1300px and a phone-
+ * width viewer collapses the page to its mobile layout. Pinning the iframe to
+ * 1440px and using CSS transform:scale keeps the desktop layout at any size —
+ * scale only shrinks pixels, it doesn't change the layout width the page sees.
+ */
+const PREVIEW_WIDTH = 1440;
+function DesktopPreview({ title, srcDoc }: { title: string; srcDoc: string }) {
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(1);
+
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const measure = () => setScale(Math.min(1, el.clientWidth / PREVIEW_WIDTH));
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // Container height = the iframe's on-screen (scaled) height so it takes only
+  // the room it visually needs. Iframe is 1440 × (viewport-height/scale) tall.
+  const frameHeight = Math.round((typeof window !== "undefined" ? window.innerHeight : 900) * 0.82);
+  return (
+    <div
+      ref={wrapRef}
+      className="w-full overflow-hidden bg-paper-white"
+      style={{ height: frameHeight * scale }}
+    >
+      <iframe
+        title={title}
+        srcDoc={srcDoc}
+        sandbox="allow-scripts"
+        referrerPolicy="no-referrer"
+        style={{
+          width: PREVIEW_WIDTH,
+          height: frameHeight,
+          transform: `scale(${scale})`,
+          transformOrigin: "top left",
+          border: 0,
+        }}
+      />
+    </div>
   );
 }
 
