@@ -203,12 +203,14 @@ Docrivo uses InsForge's managed Postgres. Key tables:
 
 Row-level security (RLS) policies ensure users can only access their own data. All database operations go through the InsForge SDK (`@insforge/sdk`), which enforces these policies automatically.
 
-## Bilingual Pages
+## Internationalization
 
-Docrivo supports Indonesian (ID) and English. Duplicate pages exist for localized content:
+Docrivo supports Indonesian (ID) and English. Duplicate page routes exist for localized content:
 
-- `/about` and `/tentang` — About page (EN/ID)
-- `/faq` and `/bantuan` — Help page (EN/ID)
+| English | Indonesian | Description |
+|---------|-----------|-------------|
+| `/about` | `/tentang` | About page |
+| `/faq` | `/bantuan` | Help/FAQ page |
 
 ## License
 
