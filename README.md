@@ -69,25 +69,46 @@ npm run worker    # background worker (tsx watch)
 
 ```
 src/
-├── app/              # Next.js App Router pages
-│   ├── about/        # About page
-│   ├── admin/        # Admin dashboard
-│   ├── api/          # API routes
-│   ├── generations/  # AI generation results
-│   ├── history/      # User history
-│   ├── login/        # Authentication
-│   ├── pricing/      # Pricing & plans
-│   ├── profile/      # User profile
-│   ├── setting/      # User settings
-│   └── template/     # Template browser
-├── components/       # React components
-├── lib/              # Core utilities
-│   ├── ai-provider.ts    # NVIDIA NIM integration
-│   ├── insforge.ts       # InsForge SDK client
-│   ├── midtrans.ts       # Payment gateway
-│   ├── render-page.ts    # Page rendering logic
-│   └── fetch-html.ts     # HTML scraping
-└── proxy.ts          # Proxy utilities
+├── app/                # Next.js App Router pages
+│   ├── about/          # About page
+│   ├── admin/          # Admin dashboard
+│   ├── api/            # API route handlers
+│   ├── bantuan/        # Help/support page (ID)
+│   ├── faq/            # FAQ page
+│   ├── generations/    # AI generation results
+│   ├── history/        # User generation history
+│   ├── login/          # Authentication page
+│   ├── maintenance/    # Maintenance mode page
+│   ├── pricing/        # Pricing & plans
+│   ├── profile/        # User profile
+│   ├── setting/        # User settings
+│   ├── template/       # Template browser
+│   └── tentang/        # About page (ID)
+├── components/         # React components
+│   ├── generation-form.tsx    # URL input & generation trigger
+│   ├── generation-result.tsx  # Generated output display
+│   ├── home-generator.tsx     # Homepage generator widget
+│   ├── pricing-cards.tsx      # Plan comparison cards
+│   ├── payment-verifier.tsx   # Payment status checker
+│   ├── history-list.tsx       # History browser
+│   ├── site-header.tsx        # Navigation header
+│   ├── site-footer.tsx        # Site footer
+│   └── topographic.tsx        # Decorative background
+├── lib/                # Core utilities
+│   ├── ai-provider.ts      # NVIDIA NIM integration
+│   ├── insforge.ts         # InsForge SDK client
+│   ├── insforge-core.ts    # Core InsForge operations
+│   ├── insforge-server.ts  # Server-side InsForge helpers
+│   ├── midtrans.ts         # Payment gateway integration
+│   ├── render-page.ts      # Page rendering logic
+│   ├── fetch-html.ts       # HTML scraping utilities
+│   ├── rate-limit.ts       # API rate limiting
+│   ├── retry.ts            # Retry with exponential backoff
+│   ├── url-validator.ts    # URL safety validation
+│   └── types.ts            # Shared TypeScript types
+├── proxy.ts            # Proxy utilities
+worker/
+└── index.ts            # Background worker for async jobs
 ```
 
 ## Features
