@@ -156,7 +156,7 @@ worker/
 
 ### User System
 - **Authentication** — email/password via InsForge Auth
-- **Credit System** — pay-per-generation model
+- **Credit System** — pay-per-generation model with plan-based allocation
 - **Generation History** — browse past generations with search
 - **User Profile** — manage account and view usage stats
 
