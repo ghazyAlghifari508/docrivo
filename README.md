@@ -13,9 +13,9 @@ AI-powered website generator. Paste a URL, Docrivo scrapes the layout and genera
 ## Tech Stack
 
 - **Framework:** Next.js 16 (App Router)
-- **Database & Auth:** [InsForge](https://insforge.dev) — Postgres-based BaaS
-- **AI Provider:** NVIDIA NIM (Mistral Small 4)
-- **Payments:** Midtrans (sandbox)
+- **Database & Auth:** [InsForge](https://insforge.dev) — open-source Postgres-based BaaS with database, auth, file storage, edge functions, realtime, and payments
+- **AI Provider:** NVIDIA NIM — Mistral Small 4 (119B params)
+- **Payments:** Midtrans — Indonesian payment gateway (sandbox mode)
 - **Scraping:** Playwright headless browser
 - **Styling:** Tailwind CSS v4
 - **Validation:** Zod
