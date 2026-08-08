@@ -124,6 +124,18 @@ src/
 - Sandboxed iframe for generation preview (`sandbox allow-scripts`)
 - X-Content-Type-Options, X-Frame-Options, Referrer-Policy headers set globally
 
+## API Routes
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/scrape` | POST | Scrape a URL and extract layout/assets |
+| `/api/scrape/preview` | GET | Sandboxed preview of scraped content |
+| `/api/generate` | POST | Generate a new website from scraped data |
+| `/api/history` | GET | Fetch user's generation history |
+| `/api/payment` | POST | Initiate Midtrans payment |
+| `/api/payment/webhook` | POST | Midtrans payment callback |
+| `/api/admin/*` | Various | Admin-only endpoints |
+
 ## License
 
 Private project. All rights reserved.
