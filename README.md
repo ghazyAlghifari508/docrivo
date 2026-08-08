@@ -42,6 +42,16 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000) in your browser.
 
+### InsForge Setup
+
+1. Create a project at [insforge.dev](https://insforge.dev)
+2. Copy the API base URL and server key to `.env.local`
+3. Run InsForge migrations to create the database schema:
+   ```bash
+   npx insforge db push
+   ```
+4. Set up RLS policies for the `generations`, `credits`, and `payments` tables
+
 ### Running the Worker
 
 The background worker handles async generation jobs:
