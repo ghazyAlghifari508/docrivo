@@ -38,7 +38,17 @@ cp .env.example .env.local   # fill in your keys
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+Open [http://localhost:3000](http://localhost:3000) in your browser.
+
+### Running the Worker
+
+The background worker handles async generation jobs:
+
+```bash
+npm run worker
+```
+
+The worker polls InsForge for pending jobs every `WORKER_POLL_MS` milliseconds.
 
 ## Environment Variables
 
