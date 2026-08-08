@@ -217,6 +217,10 @@ Docrivo supports Indonesian (ID) and English. Duplicate page routes exist for lo
 | `/about` | `/tentang` | About page |
 | `/faq` | `/bantuan` | Help/FAQ page |
 
+## Contributing
+
+This is a private project. Contributions are by invitation only.
+
 ## License
 
 Private project. All rights reserved.
