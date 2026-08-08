@@ -22,6 +22,16 @@ AI-powered website generator. Paste a URL, Docrivo scrapes the layout and genera
 
 ## Getting Started
 
+### Prerequisites
+
+- Node.js 20+
+- npm or yarn
+- An [InsForge](https://insforge.dev) project (free tier available)
+- NVIDIA NIM API key ([get one here](https://build.nvidia.com/))
+- Midtrans sandbox account (optional, for payment testing)
+
+### Installation
+
 ```bash
 npm install
 cp .env.example .env.local   # fill in your keys
