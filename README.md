@@ -92,14 +92,27 @@ src/
 
 ## Features
 
-- URL scraping with Playwright headless browser
-- AI-powered website generation via NVIDIA NIM
-- Real-time generation preview
-- User authentication via InsForge
-- Credit-based pricing with Midtrans payments
-- Generation history and templates
-- Admin dashboard
-- Responsive design with Tailwind CSS
+### Core
+- **URL Scraping** — Playwright headless browser captures layout, CSS, animations, and lazy-loaded assets
+- **AI Generation** — NVIDIA NIM rewrites the scraped design into fresh code
+- **Live Preview** — sandboxed iframe preview with CSP isolation
+- **Templates** — save and reuse generated designs
+
+### User System
+- **Authentication** — email/password via InsForge Auth
+- **Credit System** — pay-per-generation model
+- **Generation History** — browse past generations with search
+- **User Profile** — manage account and view usage stats
+
+### Payments
+- **Midtrans Integration** — Indonesian payment gateway (bank transfer, e-wallet, QRIS)
+- **Plan-based Pricing** — free tier + paid plans with different credit allocations
+- **Payment Verification** — server-side webhook verification
+
+### Admin
+- **Dashboard** — monitor generations, users, and revenue
+- **User Management** — view and manage user accounts
+- **System Health** — worker status and queue monitoring
 
 ## Security
 
