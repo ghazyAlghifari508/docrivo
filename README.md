@@ -169,6 +169,13 @@ worker/
 | `/api/payment/webhook` | POST | Midtrans payment callback |
 | `/api/admin/*` | Various | Admin-only endpoints |
 
+## Bilingual Pages
+
+Docrivo supports Indonesian (ID) and English. Duplicate pages exist for localized content:
+
+- `/about` and `/tentang` — About page (EN/ID)
+- `/faq` and `/bantuan` — Help page (EN/ID)
+
 ## License
 
 Private project. All rights reserved.
