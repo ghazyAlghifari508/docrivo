@@ -20,6 +20,7 @@ AI-powered website generator. Paste a URL, Docrivo scrapes the layout and genera
 - **Styling:** Tailwind CSS v4
 - **Validation:** Zod v4
 - **Testing:** Vitest
+- **Package Manager:** npm
 - **Language:** TypeScript
 
 ## Quick Start
