@@ -116,11 +116,13 @@ src/
 
 ## Security
 
-- CSP headers configured in `next.config.ts`
-- Server-only API keys (never exposed as `NEXT_PUBLIC_*`)
-- Admin page guarded by `ADMIN_TOKEN`
-- Rate limiting on API routes
-- URL validation on scrape endpoints
+- Content Security Policy (CSP) headers configured in `next.config.ts`
+- Server-only API keys — never exposed as `NEXT_PUBLIC_*` environment variables
+- Admin page guarded by `ADMIN_TOKEN` header check
+- Rate limiting on API routes via in-memory token bucket
+- URL validation on scrape endpoints to prevent SSRF
+- Sandboxed iframe for generation preview (`sandbox allow-scripts`)
+- X-Content-Type-Options, X-Frame-Options, Referrer-Policy headers set globally
 
 ## License
 
