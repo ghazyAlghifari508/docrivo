@@ -201,7 +201,7 @@ Docrivo uses InsForge's managed Postgres. Key tables:
 | `payments` | Midtrans payment records |
 | `templates` | Saved template definitions |
 
-Row-level security (RLS) policies ensure users can only access their own data.
+Row-level security (RLS) policies ensure users can only access their own data. All database operations go through the InsForge SDK (`@insforge/sdk`), which enforces these policies automatically.
 
 ## Bilingual Pages
 
