@@ -66,14 +66,14 @@ The worker polls InsForge for pending jobs every `WORKER_POLL_MS` milliseconds.
 
 ## Scripts
 
-```bash
-npm run dev       # dev server (custom script)
-npm run build     # production build
-npm run start     # start production server
-npm run lint      # ESLint
-npm run test      # Vitest
-npm run worker    # background worker (tsx watch)
-```
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Start dev server (custom script with hot reload) |
+| `npm run build` | Production build |
+| `npm run start` | Start production server |
+| `npm run lint` | Run ESLint |
+| `npm run test` | Run Vitest test suite |
+| `npm run worker` | Start background worker (tsx watch mode) |
 
 ## Project Structure
 
