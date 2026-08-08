@@ -178,7 +178,8 @@ worker/
 - Rate limiting on API routes via in-memory token bucket
 - URL validation on scrape endpoints to prevent SSRF
 - Sandboxed iframe for generation preview (`sandbox allow-scripts`)
-- X-Content-Type-Options, X-Frame-Options, Referrer-Policy headers set globally
+- X-Content-Type-Options (`nosniff`), X-Frame-Options (`DENY`), Referrer-Policy headers set globally
+- Strict CSP on `/api/scrape/preview` route — blocks form submission and base URI changes
 
 ## API Routes
 
