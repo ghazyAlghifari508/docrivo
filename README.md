@@ -53,7 +53,7 @@ cp .env.example .env.local   # fill in your keys
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) in your browser.
+Open [http://localhost:3000](http://localhost:3000) in your browser to reach the homepage generator.
 
 ### InsForge Setup
 
@@ -82,7 +82,7 @@ The worker polls InsForge for pending jobs every `WORKER_POLL_MS` milliseconds.
 | `INSFORGE_URL` | InsForge project API base |
 | `INSFORGE_API_KEY` | InsForge server-side key |
 | `NVIDIA_API_KEY` | NVIDIA NIM API key |
-| `AI_MODEL` | AI model ID |
+| `AI_MODEL` | AI model ID (default: `mistralai/mistral-small-4-119b-2603` — 119B params) |
 | `MIDTRANS_SERVER_KEY` | Midtrans server key |
 | `MIDTRANS_CLIENT_KEY` | Midtrans client key |
 | `ADMIN_TOKEN` | Admin page guard token |
