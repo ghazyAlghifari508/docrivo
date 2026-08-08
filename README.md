@@ -2,6 +2,10 @@
 
 AI-powered website generator. Paste a URL, Docrivo scrapes the layout and generates a fresh version using AI.
 
+[![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=next.js)](https://nextjs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5-blue?logo=typescript)](https://www.typescriptlang.org/)
+[![Tailwind CSS](https://img.shields.io/badge/Tailwind-v4-38bdf8?logo=tailwindcss)](https://tailwindcss.com/)
+
 ## How It Works
 
 1. User pastes a target URL
