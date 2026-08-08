@@ -169,6 +169,21 @@ worker/
 | `/api/payment/webhook` | POST | No | Midtrans payment callback (verified by signature) |
 | `/api/admin/*` | Various | Admin | Admin-only endpoints (token required) |
 
+## Database Schema
+
+Docrivo uses InsForge's managed Postgres. Key tables:
+
+| Table | Description |
+|-------|-------------|
+| `users` | User accounts (managed by InsForge Auth) |
+| `generations` | AI-generated website records |
+| `plans` | Pricing plan definitions |
+| `credits` | User credit balances |
+| `payments` | Midtrans payment records |
+| `templates` | Saved template definitions |
+
+Row-level security (RLS) policies ensure users can only access their own data.
+
 ## Bilingual Pages
 
 Docrivo supports Indonesian (ID) and English. Duplicate pages exist for localized content:
