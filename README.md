@@ -22,6 +22,14 @@ AI-powered website generator. Paste a URL, Docrivo scrapes the layout and genera
 - **Testing:** Vitest
 - **Language:** TypeScript
 
+## Quick Start
+
+```bash
+git clone https://github.com/ghazyAlghifari508/docrivo.git
+cd docrivo
+npm install
+```
+
 ## Getting Started
 
 ### Prerequisites
