@@ -2,6 +2,14 @@
 
 AI-powered website generator. Paste a URL, Docrivo scrapes the layout and generates a fresh version using AI.
 
+## How It Works
+
+1. User pastes a target URL
+2. Playwright scrapes the page layout, CSS, and assets
+3. NVIDIA NIM generates a new website based on the scraped design
+4. User previews the result in-browser
+5. Credits are deducted per generation
+
 ## Tech Stack
 
 - **Framework:** Next.js 16 (App Router)
