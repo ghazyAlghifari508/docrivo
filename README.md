@@ -50,9 +50,9 @@ Open [http://localhost:3000](http://localhost:3000).
 | `AI_MODEL` | AI model ID |
 | `MIDTRANS_SERVER_KEY` | Midtrans server key |
 | `MIDTRANS_CLIENT_KEY` | Midtrans client key |
-| `ADMIN_TOKEN` | Admin page guard |
-| `WORKER_POLL_MS` | Worker poll interval (ms) |
-| `MAX_PAGES` | Max scrape pages |
+| `ADMIN_TOKEN` | Admin page guard token |
+| `WORKER_POLL_MS` | Background worker poll interval in ms (default: 2000) |
+| `MAX_PAGES` | Max pages to scrape per URL (default: 5) |
 
 ## Scripts
 
