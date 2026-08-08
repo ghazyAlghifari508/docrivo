@@ -18,7 +18,9 @@ AI-powered website generator. Paste a URL, Docrivo scrapes the layout and genera
 - **Payments:** Midtrans — Indonesian payment gateway (sandbox mode)
 - **Scraping:** Playwright headless browser
 - **Styling:** Tailwind CSS v4
-- **Validation:** Zod
+- **Validation:** Zod v4
+- **Testing:** Vitest
+- **Language:** TypeScript
 
 ## Getting Started
 
