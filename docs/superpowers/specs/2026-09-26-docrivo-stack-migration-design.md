@@ -268,7 +268,9 @@ The worker remains a separate process. Running Chromium inside the web server pr
 
 All of it is deleted. Drizzle issues the same operations as ordinary SQL in under a millisecond, and no error-shape translation is needed.
 
-The 10 RPC functions remain, called through Drizzle's `sql` template rather than HTTP. Eight are data-plane functions — `hit_rate_limit`, `claim_next_job`, `retry_generation_job`, `sync_user_id_from_job`, `consume_quota`, `refund_quota`, `get_user_entitlement`, `list_plans` — and two further entitlement functions are defined in the server-only migration. None are reimplemented; all are carried over as-is.
+The 8 RPC functions remain, called through Drizzle's `sql` template rather than HTTP: `claim_next_job`, `consume_quota`, `get_user_entitlement`, `hit_rate_limit`, `list_plans`, `refund_quota`, `retry_generation_job`, `sync_user_id_from_job`. None are reimplemented; all are carried over as-is.
+
+This count is verified three ways: the repository's 12 migration files define exactly these 8, the production backup dump defines exactly these 8, and the two sets are identical. An earlier draft of this spec claimed 10; that figure was wrong and is corrected here.
 
 ### 4.3 Polling replacement
 
@@ -380,7 +382,7 @@ On a single-user development machine this is low urgency, but the instance holds
 
 A **cleaned baseline** is therefore derived before anything is applied. The transformation is mechanical and audited:
 
-- **Preserved in full:** all 11 `create table` statements, every index, all 10 function definitions, all triggers, all `revoke ... from public` (the `public` pseudo-role does exist in stock PostgreSQL).
+- **Preserved in full:** all 11 `create table` statements, every index, all 8 function definitions, all triggers, all `revoke ... from public` (the `public` pseudo-role does exist in stock PostgreSQL).
 - **Removed:** all RLS policies, all `FORCE ROW LEVEL SECURITY`, all `GRANT`/`REVOKE` targeting `anon` and `authenticated`.
 - **Rewritten:** `references auth.users(id)` becomes `references public.users(id)`, pointing at the Better Auth user table.
 - **Added:** the `create table` for `scrape_artifacts`, recovered from the live InsForge database during Phase 0 and inserted ahead of the three migrations that reference it.
@@ -390,7 +392,7 @@ The original files remain in git history unmodified. The cleaned set is a new ba
 
 #### User id type alignment
 
-Better Auth's `user` table defaults to a `text` primary key. Docrivo's `user_id` columns are `uuid` across 8 tables, and 10 RPC functions take `uuid` parameters — `consume_quota(uuid, text)` and similar.
+Better Auth's `user` table defaults to a `text` primary key. Docrivo's `user_id` columns are `uuid` across 8 tables, and 8 RPC functions take `uuid` parameters — `consume_quota(uuid, text)` and similar.
 
 Left alone, every one of those would need a type change, which is far more churn than the alternative.
 
@@ -572,7 +574,7 @@ npx -y @insforge/cli backups create --name pre-migration
 
 Verify before proceeding:
 - Row counts per table match production
-- All 10 RPC functions are present in the export
+- All 8 RPC functions are present in the dump
 - **The `scrape_artifacts` definition is extracted** — this is the authoritative source for the F4 fix
 - `insforge storage list-objects screenshots` is inventoried, since object storage is *not* included in a database export
 
@@ -657,7 +659,7 @@ Recorded so these are not re-litigated:
 | Production data lost if InsForge project is discarded | Critical | Phase 0 export with row-count verification is a hard gate. No further work starts until it passes. |
 | `scrape_artifacts` definition reconstructed wrongly from the codebase | High | Definition is recovered from the live database, never guessed from usage sites. |
 | The 12 historical migrations cannot apply unchanged | High | Established during planning: 50 `auth.uid()` calls, an `auth.users` foreign key, and 12 `REVOKE`s against non-existent `anon`/`authenticated` roles. §5.3 defines a cleaned baseline. A reviewer diffs the cleaned baseline against the originals to confirm only grants and policies were removed. |
-| Better Auth's `text` user id clashes with `uuid` `user_id` columns | Medium | Resolved in §5.3 by configuring `generateId` to emit UUIDs. The alternative — retype 8 columns and 10 function signatures — is rejected as disproportionate churn. |
+| Better Auth's `text` user id clashes with `uuid` `user_id` columns | Medium | Resolved in §5.3 by configuring `generateId` to emit UUIDs. The alternative — retype 8 columns and 8 function signatures — is rejected as disproportionate churn. |
 | TanStack Start RC introduces breaking changes | Medium | Pinned version. Framework surface is confined to `routes/`, `__root.tsx`, and `lib/queries/`; `ai-provider.ts`, `preview-html.ts`, `render-page.ts`, and `url-validator.ts` are insulated. |
 | Loss of RLS weakens access control | Medium | Application-layer ownership checks are already the primary gate and are tested explicitly (§9.2). Revisit if the database is ever client-exposed. |
 | Migration and performance fixes conflate, making failures ambiguous | Medium | Performance work is isolated in Phase 7, after parity is proven. |

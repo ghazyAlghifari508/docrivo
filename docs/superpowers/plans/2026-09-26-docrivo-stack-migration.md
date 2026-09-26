@@ -22,7 +22,7 @@ These apply to every task. Do not deviate without amending the spec first.
 - **TypeScript is 5.9.3, not 7.x.** npm `latest` is 7.0.2 (native Go compiler). 5.9.3 is deliberate: TanStack Router's type inference is load-bearing for this stack's value proposition. See spec §2.4.
 - **`@types/node` is `^24`,** matching the local Node 24 runtime. Vitest 5 peer requires `^22 || >=24`; `^20` does not satisfy it.
 - **Google is the only auth provider.** `emailAndPassword: { enabled: false }`. No email/password, no other social provider.
-- **Better Auth user table is named `users` and its id is a UUID.** `user` is reserved in PostgreSQL; UUIDs keep the existing `user_id uuid` columns unchanged across 8 tables and 10 RPC functions.
+- **Better Auth user table is named `users` and its id is a UUID.** `user` is reserved in PostgreSQL; UUIDs keep the existing `user_id uuid` columns unchanged across 8 tables and 8 RPC functions.
 - **No RLS.** All policies, `FORCE ROW LEVEL SAFETY`, and grants to `anon`/`authenticated` are stripped. Ownership is enforced in the application layer and must be tested.
 - **Ownership failures return 404, never 403.** A 403 confirms the resource exists and leaks other users' job IDs.
 - **Preserve the SSRF defences in `render-page.ts` unmodified.** Two layers: DNS resolution with IP pinning before connect, and a `context.route` filter inside the browser.
@@ -251,7 +251,8 @@ import pathlib, re
 text = pathlib.Path("backup/pre-migration-full.sql").read_text(encoding="utf-8", errors="replace")
 out = ["-- Recovered from backup/pre-migration-full.sql on 2026-09-26.",
        "-- Source: C:\\Users\\alghi\\Downloads\\20260721_021743.sql.gz",
-       "-- The repository's migrations reference this table 17 times and never",
+       "-- The repository's migrations reference this table on 18 lines across 3 files",
+"-- and never",
        "-- create it (spec finding F4). Extracted, not reconstructed.", ""]
 
 m = re.search(r"CREATE TABLE public\.scrape_artifacts\s*\([^;]*\);", text, re.I | re.S)
@@ -564,7 +565,8 @@ infrastructure that a stock PostgreSQL instance does not provide.
 
 - All 11 `create table` statements.
 - All index definitions.
-- All 10 function definitions, including `claim_next_job`, `hit_rate_limit`,
+- All 8 function definitions -- verified against the dump: claim_next_job, consume_quota, get_user_entitlement, hit_rate_limit, list_plans, refund_quota, retry_generation_job, sync_user_id_from_job --
+  including `claim_next_job` and `hit_rate_limit`,
   `consume_quota`, `refund_quota`, `get_user_entitlement`, `list_plans`.
 - `revoke execute on function ... from public` -- the `public` pseudo-role
   does exist in stock PostgreSQL and these grants are still meaningful.
@@ -572,7 +574,7 @@ infrastructure that a stock PostgreSQL instance does not provide.
 ## Added
 
 - `0004_scrape_artifacts.sql`, recovered from the live InsForge database.
-  The originals reference this table 17 times and never create it.
+  The originals reference this table on 18 lines across 3 files and never create it.
 ```
 
 - [ ] **Step 2: Create 0001 by concatenating the schema migrations**
@@ -602,7 +604,7 @@ Prepend a comment:
 
 ```sql
 -- Recovered from the live InsForge database during Phase 0.
--- The InsForge-era migrations referenced this table 17 times across 3 files
+-- The InsForge-era migrations referenced this table on 18 lines across 3 files
 -- and never created it (spec finding F4). Placing it at 0004 puts it ahead of
 -- the migrations that depend on it.
 ```
@@ -674,13 +676,17 @@ Expected: all 8 files apply with no `ERROR`. `ON_ERROR_STOP=1` makes the first f
 
 Expected: `11`.
 
-- [ ] **Step 3: Confirm 10 functions exist**
+- [ ] **Step 3: Confirm 8 functions exist**
 
 ```bash
 & "C:\Program Files\PostgreSQL\17\bin\psql.exe" -U docrivo -d docrivo -w -t -A -c "select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public';"
 ```
 
-Expected: `10`.
+Expected: `8`. Verified against the backup dump, whose `public.*` function set is
+`claim_next_job`, `consume_quota`, `get_user_entitlement`, `hit_rate_limit`,
+`list_plans`, `refund_quota`, `retry_generation_job`, `sync_user_id_from_job` --
+the identical set the repository's migrations define. A count other than 8 means
+a function was lost or added; report it rather than adjusting the baseline.
 
 - [ ] **Step 4: Confirm no RLS policies leaked through**
 
@@ -719,7 +725,7 @@ Expected: clean apply. Tests need the same schema as development.
 
 Schema state lives in the database, not the repository. The migration files were committed in Task 1.2.
 
-**Done when:** 11 tables and 10 functions in both databases, 0 policies, columns reconciled against the export, and `claim_next_job` confirmed to use `SKIP LOCKED`.
+**Done when:** 11 tables and 8 functions in both databases, 0 policies, columns reconciled against the export, and `claim_next_job` confirmed to use `SKIP LOCKED`.
 
 ### Task 1.4: Write the Drizzle schema and client
 
@@ -940,7 +946,7 @@ export const auth = betterAuth({
   advanced: {
     database: {
       // UUIDs keep the existing `user_id uuid` columns across 8 tables and
-      // 10 RPC functions unchanged. The default is a text id (spec section 5.3).
+      // 8 RPC functions unchanged. The default is a text id (spec section 5.3).
       generateId: () => crypto.randomUUID(),
     },
   },
@@ -2961,11 +2967,11 @@ git commit -m "perf(auth): resolve session once per request in the root loader"
 ### Task 8.1: Import production data and reconcile
 
 **Files:**
-- Modify: `backup/row-counts-before.txt` (gitignored)
+- Modify: `backup/row-counts-before.json` (gitignored)
 - Create: `docs/migration/local-cutover.md` (gitignored)
 
 **Interfaces:**
-- Consumes: `backup/pre-migration-full.sql`, `backup/row-counts-before.json`, `backup/screenshots-inventory.json`
+- Consumes: `backup/pre-migration-full.sql`, `backup/row-counts-before.json`, `backup/identity-reference.json`, `backup/scrape-artifacts-ddl.sql`
 - Produces: a local database holding production data, verified row for row
 
 - [ ] **Step 1: Apply the production data to a clean database**
@@ -2998,27 +3004,41 @@ Reconcile explicitly rather than forcing it:
 & "C:\Program Files\PostgreSQL\17\bin\psql.exe" -U docrivo -d docrivo -w -c "\d public.users"
 ```
 
-Expect the Better Auth shape. The InsForge user ids do not carry over, so existing rows reference users that no longer exist locally. Decide per table whether to null the orphaned `user_id` or to insert placeholder `users` rows preserving the original ids. Record the decision in `backup/row-counts-before.txt` and apply it.
+Expect the Better Auth shape. The InsForge user ids do not carry over, so existing rows reference users that no longer exist locally. Decide per table whether to null the orphaned `user_id` or to insert placeholder `users` rows preserving the original ids. Record the decision in `backup/row-counts-before.json` under a `user_id_policy` key and apply it.
 
 This is a genuine consequence of leaving InsForge: **user identities do not migrate.** Google sign-in will issue new ids, so every existing job, scrape, entitlement, and payment record becomes ownerless until reassigned. It is recorded here rather than discovered during the import.
 
-- [ ] **Step 3: Reconcile row counts**
+- [ ] **Step 3: Reconcile row counts against the recorded baseline**
 
 ```bash
-npx -y @insforge/cli db query "select relname, n_live_tup from pg_stat_user_tables order by relname" --json
-& "C:\Program Files\PostgreSQL\17\bin\psql.exe" -U docrivo -d docrivo -w -t -A -c "select relname, n_live_tup from pg_stat_user_tables order by relname"
+& "C:\Program Files\PostgreSQL\17\bin\psql.exe" -U docrivo -d docrivo -w -t -A -c "select relname, n_live_tup from pg_stat_user_tables where schemaname='public' order by relname"
+Get-Content backup/row-counts-before.json
 ```
 
-Compare the two. Every table must match, or the difference must be explained in writing.
+The local counts must match `backup/row-counts-before.json`, which Task 0.1
+recorded from the dump. The verified baseline is: `generation_jobs` 50,
+`crawled_pages` 118, `extracted_assets` 1820, `design_extractions` 23,
+`generated_documents` 22, `job_logs` 113, `rate_limits` 36, `scrape_artifacts` 0,
+`plans` 4, `user_entitlements` 2, `payment_transactions` 3 — total 2191.
 
-- [ ] **Step 4: Decide the screenshot disposition**
+Every table must match, or the difference must be explained in writing. A
+`null` in the baseline means the table had no `COPY` block at all, which is
+different from a table with zero rows.
 
-`backup/screenshots-inventory.json` lists what exists in InsForge storage. Either:
+- [ ] **Step 4: Confirm the screenshot disposition is already settled**
 
-- **Import** — download each object and write it with `writeScreenshot(jobId, pageIndex, bytes)` using the key derived from its object key.
-- **Accept the loss** — record it. `crawled_pages.screenshot_desktop_url` values will point at nothing. Historical `DESIGN.md` documents are unaffected.
+Do not decide anything here. Task 0.1 settled it: `storage.objects` has zero rows
+and no `bytea`/content column, so the dump never contained screenshot bytes, and
+`scrape_artifacts` has zero rows. There is no screenshot history to import.
 
-Either way, record the decision. There is no third option where it is silently forgotten.
+Verify the decision survived into the baseline file and move on:
+
+```bash
+(Get-Content backup/row-counts-before.json -Raw | ConvertFrom-Json).screenshots
+```
+
+Expected: a value recording that there are no screenshots to migrate. If the key
+is missing, add it rather than re-opening the question.
 
 - [ ] **Step 5: Verify the application runs on imported data**
 
@@ -3028,11 +3048,45 @@ npm run dev
 
 Expected: the app starts. Public pages render. Authenticated pages redirect to login, because no local session exists for the old InsForge users.
 
-- [ ] **Step 6: Commit nothing**
+- [ ] **Step 6: Reconcile the user set against the identity reference**
+
+```bash
+Get-Content backup/identity-reference.json
+```
+
+The reference holds 2 pre-migration users, identified by id and email **domain**
+only. Confirm each has a corresponding row in the new `users` table, or has
+been explicitly recorded as unlinked. A user silently missing from both lists is
+a defect.
+
+- [ ] **Step 7: Delete the plaintext production data**
+
+`backup/pre-migration-full.sql` is 1.7 MB and contains user email addresses,
+password hashes, payment transaction records, audit-log IP addresses, and
+encrypted compute environment blobs in plaintext. It is gitignored, but it is
+sitting in a working tree, and the source `.sql.gz` remains in the user's
+Downloads folder.
+
+Once the reconciliation above has passed and the data is confirmed imported, the
+working copies are redundant:
+
+```bash
+Remove-Item -Recurse -Force backup/
+Test-Path backup/
+```
+
+Expected: `False`. Confirm the row counts were reconciled **before** deleting —
+after this step the baseline is gone and cannot be re-derived without the
+Downloads file.
+
+Leave the source `C:\Users\alghi\Downloads\20260721_021743.sql.gz` in place; it
+is the user's file and removing it is their call, not this task's.
+
+- [ ] **Step 8: Commit nothing**
 
 The database is not in the repository. Record the reconciliation outcome in `docs/migration/local-cutover.md` (gitignored) and, if the reconciliation revealed a schema defect, fix the migration in a follow-up commit.
 
-**Done when:** every table's row count is reconciled, the user-id decision is documented and applied, and the screenshot disposition is recorded.
+**Done when:** every table's row count matches `backup/row-counts-before.json`; the user-id policy is recorded under a `user_id_policy` key and applied; the screenshot disposition is confirmed settled rather than re-opened; both pre-migration users are accounted for; and `backup/` has been deleted so no plaintext production data remains in the worktree.
 
 ---
 
