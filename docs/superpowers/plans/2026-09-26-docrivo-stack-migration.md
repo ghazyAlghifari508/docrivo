@@ -483,6 +483,9 @@ $PW = "<pick-a-dev-password>"
 & "C:\Program Files\PostgreSQL\17\bin\psql.exe" -U postgres -d postgres -w -c "create role docrivo login password '$PW'"
 ```
 
+Record `$PW` in `.env.local` in Step 5 and nowhere else. It is needed in Task
+1.1 only; every later task reads it back out of `.env.local`.
+
 Expected: `CREATE ROLE`. The role is deliberately **not** a superuser and has no `CREATEDB`, matching the convention used by the `kopikita`, `novaplan`, `padelkuy`, and `zona` roles on this instance.
 
 - [ ] **Step 2: Create both databases owned by that role**
@@ -494,8 +497,13 @@ Expected: `CREATE ROLE`. The role is deliberately **not** a superuser and has no
 
 - [ ] **Step 3: Verify the role can connect to its own database**
 
+Each task runs in its own session, so a shell variable set in Task 1.1 is not in
+scope here or in any later task. Read the password back out of `.env.local`, which
+is the single source of truth for it:
+
 ```bash
-$env:PGPASSWORD=$PW
+$env:PGPASSWORD = ((Get-Content .env.local -Raw) -match 'DATABASE_URL=postgres://docrivo:([^@]+)@') ? $Matches[1] : $null
+if (-not $env:PGPASSWORD) { throw "could not read the password from DATABASE_URL in .env.local" }
 & "C:\Program Files\PostgreSQL\17\bin\psql.exe" -U docrivo -d docrivo -w -t -A -c "select current_user, current_database();"
 ```
 
@@ -537,8 +545,19 @@ Expected: every row either shows an ACL granting `PUBLIC` connect, or the
 & "C:\Program Files\PostgreSQL\17\bin\psql.exe" -U docrivo -d kopikita -w -t -A -c "select count(*) from pg_tables where schemaname='public';"
 ```
 
-Expected: a non-zero table count, confirming the `docrivo` role **can** read
-another project's schema. Report this as a finding; do not attempt to fix it.
+Expected: a non-zero table count. That count is **catalog metadata only** --
+table and column names. It does not mean row data is reachable. Establish the
+actual reach separately:
+
+```bash
+& "C:\Program Files\PostgreSQL\17\bin\psql.exe" -U postgres -d kopikita -w -t -A -F'|' -c "select 'SELECT='||has_table_privilege('docrivo', t, 'SELECT')||' INSERT='||has_table_privilege('docrivo', t, 'INSERT')||' UPDATE='||has_table_privilege('docrivo', t, 'UPDATE')||' DELETE='||has_table_privilege('docrivo', t, 'DELETE') from (select tablename as t from pg_tables where schemaname='public' order by tablename limit 3) s;"
+& "C:\Program Files\PostgreSQL\17\bin\psql.exe" -U postgres -d kopikita -w -t -A -c "select has_database_privilege('docrivo','kopikita','CREATE');"
+```
+
+Expected, verified on this instance: all privileges `false`, and `CREATE` `false`.
+The `docrivo` role can therefore **connect and enumerate table names, but cannot
+read, write, or create anything**. Report this as a finding; do not attempt to
+fix it.
 
 **Why this is recorded rather than fixed:** the root cause is
 `pg_hba.conf` set to `trust` for all local connections, which predates this
@@ -569,7 +588,7 @@ DATABASE_URL_TEST=postgres://docrivo:<same-password>@localhost:5432/docrivo_test
 
 Credentials live only in the gitignored `.env.local`. There is no tracked file to commit in this task.
 
-**Done when:** role `docrivo` exists, both databases exist and are owned by it, and cross-database access is denied.
+**Done when:** role `docrivo` exists as a non-superuser with no CREATEDB, both databases exist and are owned by it, the role's privilege reach on the pre-existing project databases is measured and recorded (catalog metadata only, no row access), the password is set and verified against the stored SCRAM verifier, and `.env.local` carries a working `DATABASE_URL` and `DATABASE_URL_TEST`.
 
 ### Task 1.2: Derive the cleaned migration baseline
 
