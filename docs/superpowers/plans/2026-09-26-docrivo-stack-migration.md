@@ -17,7 +17,7 @@
 These apply to every task. Do not deviate without amending the spec first.
 
 - **Branch:** all work happens on `feat/tanstack-start-drizzle`. Never commit to `dev`.
-- **Zero trace:** no `next`, `insforge`, or `apify` in `package.json`, `node_modules`, config, or source at any task's completion. See the verification block in Task 3.1.
+- **Zero trace:** no `next`, `insforge`, or `apify` in `package.json`, `node_modules`, config, or source by the end of Task 6.2. During Phases 0 through 3, `next` is still a direct dependency by design — Task 3.1 is what removes it. Nothing in Phases 0 to 3 may *add* a Next reference. See the verification block in Task 3.1.
 - **Exact pins for TanStack:** `@tanstack/react-start@1.168.58`, `@tanstack/react-router@1.170.39`, `@tanstack/react-query@5.104.0`, `@tanstack/router-plugin@1.168.40`. No caret ranges — Start exact-pins its own internals and caret ranges cause version skew.
 - **TypeScript is 5.9.3, not 7.x.** npm `latest` is 7.0.2 (native Go compiler). 5.9.3 is deliberate: TanStack Router's type inference is load-bearing for this stack's value proposition. See spec §2.4.
 - **`@types/node` is `^24`,** matching the local Node 24 runtime. Vitest 5 peer requires `^22 || >=24`; `^20` does not satisfy it.
@@ -1360,7 +1360,51 @@ export default defineConfig({
 })
 ```
 
-Add `@vitejs/plugin-react` as a dev dependency if the Start plugin does not already bring it.
+- [ ] **Step 2a: Resolve the `vitest.config.ts` module-format deprecation**
+
+Vite 8 emits a deprecation warning for this file today and will hard-break when
+`configLoader` defaults to `native`:
+
+> The `vitest.config.ts` file is loaded as CommonJS while it uses ESM syntax.
+
+`package.json` has no `"type": "module"`, so a `.ts` config is treated as CJS.
+This must be resolved here, because Task 3.2 is the task that establishes the
+project's module format. Left unaddressed it surfaces as a confusing failure in
+a later task with no obvious cause.
+
+Two acceptable resolutions — pick one:
+
+```bash
+# Option A: mark the package as ESM, which is correct for a Vite project
+```
+
+Add to `package.json`:
+
+```json
+"type": "module"
+```
+
+Then confirm every config and script still loads, including `scripts/dev.js`
+(which is CommonJS and would need its `.js` extension changed to `.cjs`, or its
+body converted).
+
+```bash
+# Option B: rename the config to an explicit ESM extension, leaving package.json alone
+```
+
+```bash
+git mv vitest.config.ts vitest.config.mts
+```
+
+Verify the warning is gone and the suite still passes:
+
+```bash
+npx vitest run
+```
+
+Expected: 5 test files, 23 tests passing, and **no** `configLoader` or
+module-format warning in the output. If the warning persists under either
+option, resolve it before continuing — do not carry it forward.
 
 - [ ] **Step 3: Write `tsconfig.json`**
 
