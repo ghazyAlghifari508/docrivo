@@ -58,4 +58,8 @@ next-env.d.ts
 # knowledge-graph cache (regenerated on demand)
 /graphify-out/cache
 
+# migration artifacts: production data dumps must never be committed
+backup/
+var/
+
 .worktrees/
