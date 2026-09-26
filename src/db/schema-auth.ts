@@ -11,8 +11,9 @@
  * this file alone, and `betterAuth({ user: { modelName: "users" }, advanced:
  * { database: { generateId: "uuid" } } })` as the options.
  *
- * Two deliberate edits to the generator's output, both narrowing a gap rather
- * than diverging from Better Auth:
+ * Three deliberate edits to the generator's output. The first two narrow a gap
+ * rather than diverge from Better Auth. The third is forced by a version skew
+ * between two dependencies and is not a style choice.
  *
  *   * `timestamp(..., { withTimezone: true })`, i.e. `timestamptz`. The
  *     generator emits a bare `timestamp` for dates, but Better Auth's own
@@ -24,6 +25,42 @@
  *   * explicit names on the two unique constraints and the two foreign keys.
  *     Drizzle would otherwise synthesise `_unique` and `_fk` suffixes, and
  *     this database uses PostgreSQL's `_key` / `_fkey` defaults everywhere.
+ *   * the generator's `authRelations` block is dropped, and its
+ *     `defineRelationsPart` import with it. Emitted, it reads
+ *     `export const authRelations = defineRelationsPart({ users, session,
+ *     account, verification }, (r) => ({ ... users: { sessions: r.many.session
+ *     ({...}), accounts: r.many.account({...}) }, session: { users: r.one.users
+ *     ({...}) }, account: { users: r.one.users({...}) } }))`.
+ *
+ * Why the third edit is necessary: the installed `drizzle-orm` is **0.45.3**,
+ * and it has no `defineRelationsPart`. The symbol is absent from the whole of
+ * `node_modules/drizzle-orm` and is not an export of the package; it arrives in
+ * `drizzle-orm` 1.0.0-rc.1, part of the relations-v2 API. 0.45.3 ships only the
+ * older v1 `relations()` helper. `better-auth@1.7.6` nevertheless declares the
+ * peer range `"drizzle-orm": "^0.45.2 || >=1.0.0-rc.1 <2.0.0"`, which 0.45.3
+ * satisfies, so the generator targets the newer API against a runtime that
+ * cannot compile it. Nothing in this file needs the relations, so omitting them
+ * is the minimal fix; upgrading `drizzle-orm` is the real one.
+ *
+ * Consequences for whoever touches this next:
+ *
+ *   * Drizzle's relational *joins* are unavailable. `db.query.session` does
+ *     exist and a flat `findMany()` works, but
+ *     `db.query.session.findMany({ with: { users: true } })` throws
+ *     `TypeError: Cannot read properties of undefined (reading
+ *     'referencedTable')`, because no relations are registered. Use
+ *     `db.select()` with an explicit join, or define v1 `relations()` for these
+ *     four tables.
+ *   * Re-running the 1.7.6 generator re-emits
+ *     `import { defineRelationsPart, sql } from "drizzle-orm"` and the
+ *     `authRelations` block, and the result will not typecheck — drop both
+ *     again. `drizzle-kit generate` is unaffected: it reads the declared
+ *     tables, not the relations, so the auth DDL still regenerates from this
+ *     file.
+ *   * Better Auth's own adapter is unaffected either way. It uses
+ *     `db.select()` / `db.insert()` and never `db.query`, so sign-in is
+ *     unaffected. Do not "restore" the block until `drizzle-orm` is on
+ *     1.0.0-rc.1 or later.
  *
  * Column names are snake_case while the object keys are camelCase, which is
  * what the generator emits for PostgreSQL and what `schema.ts` does too.

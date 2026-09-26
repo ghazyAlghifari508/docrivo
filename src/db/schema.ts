@@ -1,9 +1,13 @@
 /**
- * Application tables, mirroring the local PostgreSQL 17 schema created by the
- * applied baseline in `migrations/0001`–`0010`. Types, nullability, defaults,
- * indexes and foreign keys are transcribed from the database itself; changing
- * anything here is a schema change and belongs in a new `migrations/` file, not
- * in this file.
+ * Application tables, mirroring the local PostgreSQL 17 schema as it stands
+ * after the applied migrations: the baseline `migrations/0001`–`0008`, plus
+ * `0011_user_fks.sql`, whose nine `user_id` foreign keys are declared below.
+ * `0010_function_revoke.sql` is applied too, but it only revokes privileges on
+ * three functions, so nothing here comes from it. `0009` is absent on purpose —
+ * it is reserved for `0009_job_lease.sql`. `migrations/RULES.md` is
+ * authoritative on the numbering. Types, nullability, defaults, indexes and
+ * foreign keys are transcribed from the database itself; changing anything here
+ * is a schema change and belongs in a new `migrations/` file, not in this file.
  *
  * One deliberate gap, awaiting a later task: `src/db/schema-auth.ts` (Better
  * Auth's user/session/account/verification tables) is not defined here. The nine
