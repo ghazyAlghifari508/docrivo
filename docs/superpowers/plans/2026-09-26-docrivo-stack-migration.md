@@ -796,6 +796,71 @@ Any column present in one and absent in the other is a baseline defect. Fix the 
 
 Expected: the body contains `for update skip locked`. Without it, concurrent workers will double-claim jobs and Task 7.1's work is built on sand.
 
+- [ ] **Step 6b: Close the PUBLIC-execute gap on the four unprotected functions**
+
+The baseline preserves `revoke execute on function ... from public` for four
+functions — `consume_quota`, `refund_quota`, `get_user_entitlement`, `list_plans`
+— exactly as the originals had them. But **four functions have no revoke at all**,
+and two of those mutate `generation_jobs`:
+
+`claim_next_job` · `hit_rate_limit` · `retry_generation_job` · `sync_user_id_from_job`
+
+In production these were protected indirectly: the app connected with an admin key
+that bypassed privilege checks, while the `revoke ... from anon` /
+`from authenticated` clauses blocked direct PostgREST access. Both protections are
+gone now — there is no PostgREST, and the app connects as the `docrivo` owner,
+which is subject to no function-level revoke.
+
+The exposure is low today: the database is localhost-only, single-role, and
+owner-connected. But an un-revoked function is `PUBLIC`-executable by construction,
+and that is a latent widening of the privilege surface that no other task
+addresses. Close it as defence in depth.
+
+Create `migrations/0010_function_revoke.sql`. The signatures below were read from
+the baseline and are exact — a `revoke` naming the wrong argument types raises
+`function ... does not exist` and fails the whole file:
+
+```sql
+-- Closes the PUBLIC-execute gap left by the cleaned baseline.
+--
+-- The baseline preserves `revoke ... from public` for consume_quota,
+-- refund_quota, get_user_entitlement and list_plans, matching the originals.
+-- These three callable functions had no such revoke. In production they were
+-- shielded indirectly -- the app used an admin key that bypassed privilege
+-- checks, and the `revoke ... from anon` / `from authenticated` clauses blocked
+-- PostgREST. Neither shield exists in the local topology, where the app
+-- connects as the `docrivo` owner and is subject to no function-level revoke.
+--
+-- claim_next_job and retry_generation_job mutate public.generation_jobs.
+-- See spec 5.4: RLS is dropped, so application-layer ownership is the only gate.
+
+revoke execute on function public.claim_next_job() from public;
+revoke execute on function public.hit_rate_limit(text, int, int) from public;
+revoke execute on function public.retry_generation_job(uuid) from public;
+```
+
+`sync_user_id_from_job()` is deliberately **not** revoked. It is a `returns
+trigger` function used by the five `trg_sync_user_id` triggers
+(`0006_user_id_columns.sql:112`), and a trigger function cannot be invoked
+directly — there is nothing to protect.
+
+Apply and confirm no function remains `PUBLIC`-executable:
+
+```bash
+& "C:\Program Files\PostgreSQL\17\bin\psql.exe" -U docrivo -d docrivo -w -v ON_ERROR_STOP=1 -f migrations/0010_function_revoke.sql
+& "C:\Program Files\PostgreSQL\17\bin\psql.exe" -U docrivo -d docrivo -w -t -A -c "select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and has_function_privilege('public', p.oid, 'EXECUTE');"
+```
+
+Expected: `0`. Any non-zero count means a function is still world-executable;
+find it with:
+
+```bash
+& "C:\Program Files\PostgreSQL\17\bin\psql.exe" -U docrivo -d docrivo -w -t -A -c "select p.proname, pg_get_function_identity_arguments(p.oid) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and has_function_privilege('public', p.oid, 'EXECUTE');"
+```
+
+Note the `docrivo` role itself is the owner and retains EXECUTE regardless — that
+is correct and intended. The check is about `PUBLIC`, not about the app role.
+
 - [ ] **Step 7: Apply the same baseline to `docrivo_test`**
 
 ```bash
