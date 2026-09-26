@@ -396,7 +396,16 @@ Better Auth's `user` table defaults to a `text` primary key. Docrivo's `user_id`
 
 Left alone, every one of those would need a type change, which is far more churn than the alternative.
 
-**Decision: configure Better Auth to generate UUID identifiers.** Its `advanced.database.generateId` hook accepts a custom function; supplying `() => crypto.randomUUID()` makes `users.id` a `uuid`, matching the existing schema exactly. No existing column or function signature changes.
+**Decision: configure Better Auth to generate UUID identifiers**, with
+`generateId: "uuid"`.
+
+Not a callback. In Better Auth 1.7.6 this option's type is
+`GenerateIdFn | false | "serial" | "uuid"`, and the Drizzle generator branches
+only on the literal string `"uuid"`. Passing `() => crypto.randomUUID()`
+type-checks and then **silently does nothing** — `users.id` stays `text`, and
+none of the nine foreign keys into the existing `uuid` columns can be created.
+An earlier draft of this spec specified the callback and was wrong; discovered
+during Task 2.1 and corrected there.
 
 The Better Auth `user` model is additionally named `users` rather than the default `user`, because `user` is a reserved word in PostgreSQL and would require quoting at every reference.
 

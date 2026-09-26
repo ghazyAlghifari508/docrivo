@@ -965,8 +965,8 @@ export const db = drizzle(sql, { schema: {} })
 // A separate client for the test suite, so tests can target `docrivo_test`
 // without the application ever resolving to it by accident.
 const testUrl = process.env.DATABASE_URL_TEST
-export const testSql = testUrl ? postgres(testUrl, { max: 5 }) : null
-export const testDb = testUrl ? drizzle(testSql!, { schema: {} }) : null
+export const testPgClient = testUrl ? postgres(testUrl, { max: 5 }) : null
+export const testDb = testUrl ? drizzle(testPgClient!, { schema: {} }) : null
 ```
 
 Two exports, one per target. `db` is what the application uses; `testDb` is what
@@ -989,7 +989,12 @@ import { defineConfig } from "drizzle-kit"
 
 export default defineConfig({
   dialect: "postgresql",
-  schema: "./src/db/schema.ts",
+  // Both files, as an array. `src/db/schema.ts` reaches `users` through an
+  // import, and drizzle-kit does not follow imports: with only that one file
+  // listed it emits the nine `*_user_id_fkey` foreign keys referencing a
+  // `public.users` it never creates, and skips `session`, `account` and
+  // `verification` entirely.
+  schema: ["./src/db/schema.ts", "./src/db/schema-auth.ts"],
   out: "./drizzle",
   dbCredentials: {
     url: process.env.DATABASE_URL ?? "postgres://docrivo:<password>@localhost:5432/docrivo",
@@ -1149,7 +1154,7 @@ export const auth = betterAuth({
     database: {
       // UUIDs keep the existing `user_id uuid` columns across 8 tables and
       // 8 RPC functions unchanged. The default is a text id (spec section 5.3).
-      generateId: () => crypto.randomUUID(),
+      generateId: "uuid",
     },
   },
 })
@@ -1187,8 +1192,15 @@ export const db = drizzle(sql, { schema: { ...appSchema, ...authSchema } })
 - [ ] **Step 7: Apply the 4 auth tables**
 
 ```bash
-npx auth migrate
+npx auth migrate   # does not exist -- see the note below
 ```
+
+**`npx auth migrate` does not exist and cannot be used here.** There is no such
+bin -- the CLI package is `@better-auth/cli` -- and its `migrate` command is
+Kysely-only, rejecting the Drizzle adapter with "Only kysely adapter is
+supported for migrations." Generate the DDL from the Step 2 output and apply it
+with `psql -v ON_ERROR_STOP=1` instead. What matters is the end state: four
+tables present with `users.id` a `uuid`, not which command produced them.
 
 Expected: 4 tables created. Verify:
 
@@ -1279,11 +1291,18 @@ Apply and verify all nine:
 
 ```bash
 & "C:\Program Files\PostgreSQL\17\bin\psql.exe" -U docrivo -d docrivo -w -v ON_ERROR_STOP=1 -f migrations/0011_user_fks.sql
-& "C:\Program Files\PostgreSQL\17\bin\psql.exe" -U docrivo -d docrivo -w -t -A -c "select count(*) from pg_constraint where contype='f' and confrelid = 'public.users'::regclass;"
+& "C:\Program Files\PostgreSQL\17\bin\psql.exe" -U docrivo -d docrivo -w -t -A -c "select count(*) from pg_constraint c join pg_class t on t.oid=c.conrelid where c.contype='f' and c.confrelid='public.users'::regclass and t.relname in ('generation_jobs','crawled_pages','design_extractions','extracted_assets','generated_documents','job_logs','payment_transactions','user_entitlements','scrape_artifacts');"
+& "C:\Program Files\PostgreSQL\17\bin\psql.exe" -U docrivo -d docrivo -w -t -A -c "select count(*) from pg_constraint c join pg_class t on t.oid=c.conrelid where c.contype='f' and c.confdeltype='c' and c.confrelid='public.users'::regclass and t.relname in ('generation_jobs','crawled_pages','design_extractions','extracted_assets','generated_documents','job_logs','payment_transactions','user_entitlements','scrape_artifacts');"
 ```
 
-Expected: `9`. A lower count means a constraint was missed, and a missed one
-fails silently, so check the number rather than assuming the file applied.
+Expected: **9** and **2**.
+
+**The count must be scoped to the nine application tables.** An unscoped
+`confrelid = 'public.users'` returns **11**, because Better Auth's own
+`session_user_id_fkey` and `account_user_id_fkey` also reference `users` — and
+**4** cascades once those two are counted, because both of Better Auth's are
+cascades too. The unscoped form looks like a failure of this step when the step
+actually succeeded.
 
 Then add those nine constraints to `src/db/schema.ts` so the Drizzle schema and
 the database agree. **Name each one explicitly.** Drizzle's `foreignKey({ ... })`
@@ -2005,7 +2024,8 @@ git commit -m "feat: port all 15 routes and 17 components to TanStack Start"
 
 ```ts
 import { beforeEach, describe, expect, it } from "vitest"
-import { db, sql } from "~/db"
+import { db } from "~/db"
+import { sql } from "drizzle-orm"
 import { createGeneration, getOwnedJob, claimNextJob } from "./jobs"
 
 const USER_A = "00000000-0000-0000-0000-00000000000a"
@@ -2325,7 +2345,8 @@ git commit -m "feat(storage): add filesystem screenshot storage and scrape serve
 
 ```ts
 import { beforeEach, describe, expect, it } from "vitest"
-import { db, sql } from "~/db"
+import { db } from "~/db"
+import { sql } from "drizzle-orm"
 import { consumeQuota, refundQuota, getEntitlement } from "./entitlements"
 
 const USER = "00000000-0000-0000-0000-00000000000c"
@@ -3037,7 +3058,8 @@ git commit -m "docs: rewrite README for the new stack and pass the zero-trace ga
 
 ```ts
 import { beforeEach, describe, expect, it } from "vitest"
-import { db, sql } from "~/db"
+import { db } from "~/db"
+import { sql } from "drizzle-orm"
 import { createGeneration } from "~/queries/jobs"
 
 const USER = "00000000-0000-0000-0000-00000000000d"
@@ -3159,7 +3181,8 @@ git commit -m "feat(worker): add job lease expiry and bounded concurrency"
 
 ```ts
 import { describe, expect, it } from "vitest"
-import { db, sql } from "~/db"
+import { db } from "~/db"
+import { sql } from "drizzle-orm"
 import { runRetention } from "./retention"
 
 describe("retention", () => {
