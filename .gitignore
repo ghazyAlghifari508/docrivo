@@ -57,3 +57,5 @@ next-env.d.ts
 
 # knowledge-graph cache (regenerated on demand)
 /graphify-out/cache
+
+.worktrees/
