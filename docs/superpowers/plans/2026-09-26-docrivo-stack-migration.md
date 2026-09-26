@@ -959,8 +959,8 @@ import postgres from "postgres"
 const url = process.env.DATABASE_URL
 if (!url) throw new Error("DATABASE_URL is required")
 
-export const sql = postgres(url, { max: 5 })
-export const db = drizzle(sql, { schema: {} })
+export const pgClient = postgres(url, { max: 5 })
+export const db = drizzle(pgClient, { schema: {} })
 
 // A separate client for the test suite, so tests can target `docrivo_test`
 // without the application ever resolving to it by accident.
@@ -1182,11 +1182,11 @@ import postgres from "postgres"
 import * as appSchema from "./schema"
 import * as authSchema from "./schema-auth"
 
-const url = process.env.DATABASE_URL_TEST ?? process.env.DATABASE_URL
+const url = process.env.DATABASE_URL
 if (!url) throw new Error("DATABASE_URL or DATABASE_URL_TEST is required")
 
-export const sql = postgres(url, { max: 5 })
-export const db = drizzle(sql, { schema: { ...appSchema, ...authSchema } })
+export const pgClient = postgres(url, { max: 5 })
+export const db = drizzle(pgClient, { schema: { ...appSchema, ...authSchema } })
 ```
 
 - [ ] **Step 7: Apply the 4 auth tables**
