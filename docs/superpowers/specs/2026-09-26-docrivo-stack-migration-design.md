@@ -32,7 +32,7 @@ Four stated motivations, all of which this design serves:
 - **No trace of the previous stack.** `package.json`, `node_modules`, configuration, and source contain no Next.js, no InsForge, and no Apify. Verified by the checks in §2.5, not by inspection.
 - All 15 pages and 12 HTTP endpoints reach behavioural parity with the Next.js implementation, and the suite in §9.2 passes.
 - Google sign-in works end-to-end against local PostgreSQL.
-- All 12 existing SQL migrations plus the new `scrape_artifacts` migration apply cleanly to an empty database.
+- A cleaned migration baseline applies cleanly to an empty database, and the resulting schema matches the InsForge export (§5.3).
 - Playwright is the only crawler; the environment-dependent `capture_mode` value no longer exists.
 - The three known performance defects (F1, F2, F3 in §3) are resolved.
 
@@ -366,28 +366,37 @@ On a single-user development machine this is low urgency, but the instance holds
 1. The application connects as the non-superuser role `docrivo`, never as `postgres`. This follows the existing convention and enforces least privilege — the migration tool and the application cannot accidentally drop the other project databases.
 2. Tightening `pg_hba.conf` to `scram-sha-256` is out of scope for this migration and is recorded as a follow-up.
 
-### 5.3 Migration bridge
+### 5.3 Migration bridge — deriving a cleaned baseline
 
-The 12 existing migration files are plain PostgreSQL and are adopted unchanged as the baseline history. Drizzle Kit generates all subsequent migrations from that point forward.
+**The 12 existing migration files cannot be applied unchanged.** They are syntactically plain PostgreSQL but semantically depend on InsForge infrastructure that does not exist in a stock PostgreSQL instance:
 
-**This requires explicit handling.** Drizzle Kit derives a baseline by inspecting the target database. Pointed at an empty database it would conclude that all 11 tables are missing and generate a `CREATE TABLE` migration for each, colliding with the adopted history. Two constraints prevent this:
+| InsForge dependency | Occurrences | Consequence when applied locally |
+|---|---|---|
+| `auth.uid()` | 50, across 3 files | Undefined function — every policy fails |
+| `references auth.users(id)` | `20260710132820:18` | FK to a non-existent table — hard failure |
+| `REVOKE ... FROM anon` / `FROM authenticated` | 12, across 2 files | Neither role exists locally — every statement errors |
+| `FORCE ROW LEVEL SECURITY` | ~8 tables | References `auth.uid()` in its policies |
+| `scrape_artifacts` never created | 17 references, 0 DDL | Policies target a non-existent table (F4) |
 
-- The new `scrape_artifacts` migration is authored as a hand-written `.sql` file, not a Drizzle Kit generation, and is placed in the applied-baseline sequence manually.
-- The `drizzle.config.ts` migrations directory and journal are configured so that Drizzle Kit's `generate` command produces only *incremental* migrations against the adopted baseline, and `migrate` never attempts to re-apply the 12 historical files.
+A **cleaned baseline** is therefore derived before anything is applied. The transformation is mechanical and audited:
 
-One migration is inserted ahead of the three that reference `scrape_artifacts`:
+- **Preserved in full:** all 11 `create table` statements, every index, all 10 function definitions, all triggers, all `revoke ... from public` (the `public` pseudo-role does exist in stock PostgreSQL).
+- **Removed:** all RLS policies, all `FORCE ROW LEVEL SECURITY`, all `GRANT`/`REVOKE` targeting `anon` and `authenticated`.
+- **Rewritten:** `references auth.users(id)` becomes `references public.users(id)`, pointing at the Better Auth user table.
+- **Added:** the `create table` for `scrape_artifacts`, recovered from the live InsForge database during Phase 0 and inserted ahead of the three migrations that reference it.
+- **Not preserved:** grants and policies only. No table, column, index, or function definition changes.
 
-```
-20260706041528_init-designmd.sql
-...
-+  <new>  create-scrape-artifacts.sql          ← INSERTED HERE
-...
-20260710132820_fix-rls-ownership-policies.sql  ← first reference
-20260710133821_optimize-rls-policy-performance.sql
-20260712100000_fix-history-delete.sql
-```
+The original files remain in git history unmodified. The cleaned set is a new baseline under `migrations/`, and it is the sole applied history going forward.
 
-The authoritative column set is recovered from the live InsForge database during Phase 0, not guessed. `migrations/` currently contains no DDL for this table, so any reconstruction from the codebase alone would be speculative.
+#### User id type alignment
+
+Better Auth's `user` table defaults to a `text` primary key. Docrivo's `user_id` columns are `uuid` across 8 tables, and 10 RPC functions take `uuid` parameters — `consume_quota(uuid, text)` and similar.
+
+Left alone, every one of those would need a type change, which is far more churn than the alternative.
+
+**Decision: configure Better Auth to generate UUID identifiers.** Its `advanced.database.generateId` hook accepts a custom function; supplying `() => crypto.randomUUID()` makes `users.id` a `uuid`, matching the existing schema exactly. No existing column or function signature changes.
+
+The Better Auth `user` model is additionally named `users` rather than the default `user`, because `user` is a reserved word in PostgreSQL and would require quoting at every reference.
 
 ### 5.4 Row Level Security decision
 
@@ -571,9 +580,9 @@ Done when: row counts reconciled, `scrape_artifacts` DDL captured, storage inven
 
 ### Phase 1 — Database
 
-Create role `docrivo` and database `docrivo` (plus `docrivo_test`). Write the `scrape_artifacts` migration from the Phase 0 definition and insert it ahead of the three migrations that reference it. Apply all migrations to the empty database. Write Drizzle schema definitions for the 11 tables and configure `drizzle.config.ts` against the local instance.
+Create role `docrivo` and database `docrivo` (plus `docrivo_test`). Derive the cleaned migration baseline described in §5.3 — strip RLS and the `anon`/`authenticated` grants, re-point the `auth.users` foreign key, and insert the recovered `scrape_artifacts` DDL. Apply the baseline to the empty database and reconcile the resulting schema against the Phase 0 export. Write Drizzle schema definitions for the 11 tables and configure `drizzle.config.ts` against the local instance.
 
-Done when: `drizzle-kit migrate` completes against a clean database, and the resulting schema matches the InsForge export.
+Done when: the cleaned baseline applies to an empty database without error, and the resulting schema matches the InsForge export table for table, column for column, function for function.
 
 ### Phase 2 — Authentication
 
@@ -647,6 +656,8 @@ Recorded so these are not re-litigated:
 |---|---|---|
 | Production data lost if InsForge project is discarded | Critical | Phase 0 export with row-count verification is a hard gate. No further work starts until it passes. |
 | `scrape_artifacts` definition reconstructed wrongly from the codebase | High | Definition is recovered from the live database, never guessed from usage sites. |
+| The 12 historical migrations cannot apply unchanged | High | Established during planning: 50 `auth.uid()` calls, an `auth.users` foreign key, and 12 `REVOKE`s against non-existent `anon`/`authenticated` roles. §5.3 defines a cleaned baseline. A reviewer diffs the cleaned baseline against the originals to confirm only grants and policies were removed. |
+| Better Auth's `text` user id clashes with `uuid` `user_id` columns | Medium | Resolved in §5.3 by configuring `generateId` to emit UUIDs. The alternative — retype 8 columns and 10 function signatures — is rejected as disproportionate churn. |
 | TanStack Start RC introduces breaking changes | Medium | Pinned version. Framework surface is confined to `routes/`, `__root.tsx`, and `lib/queries/`; `ai-provider.ts`, `preview-html.ts`, `render-page.ts`, and `url-validator.ts` are insulated. |
 | Loss of RLS weakens access control | Medium | Application-layer ownership checks are already the primary gate and are tested explicitly (§9.2). Revisit if the database is ever client-exposed. |
 | Migration and performance fixes conflate, making failures ambiguous | Medium | Performance work is isolated in Phase 7, after parity is proven. |
