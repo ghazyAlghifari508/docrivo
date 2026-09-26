@@ -802,7 +802,7 @@ Any column present in one and absent in the other is a baseline defect. Fix the 
 
 Expected: the body contains `for update skip locked`. Without it, concurrent workers will double-claim jobs and Task 7.1's work is built on sand.
 
-- [ ] **Step 6b: Close the PUBLIC-execute gap on the four unprotected functions**
+- [ ] **Step 7: Close the PUBLIC-execute gap on the three unprotected functions**
 
 The baseline preserves `revoke execute on function ... from public` for four
 functions — `consume_quota`, `refund_quota`, `get_user_entitlement`, `list_plans`
@@ -879,7 +879,7 @@ Expected: exactly one row, `sync_user_id_from_job`, `trigger`, public `t`, owner
 The `docrivo` role retains EXECUTE as the owner regardless — that is correct and
 intended. The check is about `PUBLIC`, not about the app role.
 
-- [ ] **Step 7: Apply the same baseline to `docrivo_test`**
+- [ ] **Step 8: Apply the same baseline to `docrivo_test`**
 
 ```bash
 foreach ($f in (Get-ChildItem migrations -Filter "0*.sql" | Sort-Object Name)) {
@@ -890,7 +890,7 @@ foreach ($f in (Get-ChildItem migrations -Filter "0*.sql" | Sort-Object Name)) {
 
 Expected: clean apply. Tests need the same schema as development.
 
-- [ ] **Step 8: Commit nothing**
+- [ ] **Step 9: Commit nothing**
 
 Schema state lives in the database, not the repository. The migration files were committed in Task 1.2.
 
@@ -1394,22 +1394,53 @@ Expected: FAIL — `resolveSession` is not exported.
 
 ```ts
 import { createMiddleware } from "@tanstack/react-start"
+import { getRequestHeaders } from "@tanstack/react-start/server"
 import { auth } from "./server"
 
 export async function resolveSession(requestHeaders: Headers) {
   return auth.api.getSession({ headers: requestHeaders })
 }
 
+/**
+ * Makes the session available to every server function. It does not decide
+ * whether authentication is required -- a missing session becomes
+ * `user: null` here, and the route that knows the answer turns that into a
+ * redirect (page) or a 401 (server function). Throwing from the middleware
+ * would collapse "logged out" and "the session lookup failed" into one opaque
+ * error.
+ *
+ * `getRequestHeaders()`, not a `request` argument: a `type: "function"`
+ * middleware's server handler receives `data`, `context`, `next`, `method`,
+ * `serverFnMeta` and `signal` -- there is no `request`. Only `type: "request"`
+ * middleware gets one. Confirmed against
+ * `FunctionMiddlewareServerFnOptions` in
+ * `@tanstack/start-client-core/dist/esm/createMiddleware.d.ts`.
+ */
 export const authMiddleware = createMiddleware({ type: "function" })
   .client(async ({ next }) => next())
-  .server(async ({ next, request }) => {
-    const session = await resolveSession(request.headers)
-    if (!session) throw new Error("UNAUTHENTICATED")
-    return next({ context: { user: session.user } })
+  .server(async ({ next }) => {
+    const session = await resolveSession(getRequestHeaders())
+    return next({ context: { user: session?.user ?? null } })
   })
 ```
 
-`UNAUTHENTICATED` is thrown rather than a redirect so the same middleware serves both page routes and server functions. Page routes translate it to a redirect; server functions return 401. See Task 4.1 Step 4.
+Two things this snippet gets right that an earlier draft got wrong, both
+caught during implementation:
+
+1. **No `throw`.** The middleware's job is to make the session available, not to
+   enforce access. A thrown error there cannot distinguish "logged out" from
+   "the database is unreachable", so a real outage and a logged-out user look
+   identical to the caller.
+2. **`getRequestHeaders()`, not `request.headers`.** A `type: "function"`
+   middleware's server handler is never passed a `request`, so `request.headers`
+   throws `Cannot read properties of undefined` on the first real request -- and
+   a test that only calls `resolveSession` directly still passes. That is the
+   worst shape of bug: green tests, broken at runtime. Task 4.1 must not repeat
+   either mistake.
+
+`auth.api.getSession({ headers })` returns `null` for an unauthenticated request
+rather than throwing, so no try/catch belongs around it. Wrapping it would
+swallow genuine errors.
 
 - [ ] **Step 4: Write the admin check**
 
@@ -1453,7 +1484,27 @@ git add src/auth/
 git commit -m "feat(auth): add session middleware and admin email allowlist"
 ```
 
-**Done when:** the middleware test passes, an unauthenticated request resolves to `null`, and `ADMIN_EMAILS` is read from the environment.
+**`requireAdmin`** is specified in this task's Interfaces block and must be
+implemented here, not deferred. It throws `notFound()` — not a 403 — when the
+session is absent or the email is not in the allowlist, matching the
+deliberate 404-not-403 rule from spec §8.2 so the existence of the route is not
+disclosed:
+
+```ts
+import { notFound } from "@tanstack/react-router"
+import { isAdminEmail } from "./admin"
+
+export function requireAdmin(sessionUser: { email: string } | null): void {
+  if (!sessionUser) notFound()
+  if (!isAdminEmail(sessionUser.email)) notFound()
+}
+```
+
+`authMiddleware` is **not** yet registered against any `createStart` instance —
+no `src/start.ts` exists. That registration is Task 3.2's job, and the plan
+there must include it or the middleware never runs.
+
+**`Done when:** the middleware test passes, an unauthenticated request resolves to `null`, `requireAdmin` is exported and tested, and `ADMIN_EMAILS` is read from the environment.
 
 ### Task 2.3: Port the open-redirect guard
 
@@ -1683,7 +1734,7 @@ export default defineConfig({
 })
 ```
 
-- [ ] **Step 2a: Resolve the `vitest.config.ts` module-format deprecation**
+- [ ] **Step 3: Resolve the `vitest.config.ts` module-format deprecation**
 
 Vite 8 emits a deprecation warning for this file today and will hard-break when
 `configLoader` defaults to `native`:
@@ -1729,7 +1780,35 @@ Expected: 5 test files, 23 tests passing, and **no** `configLoader` or
 module-format warning in the output. If the warning persists under either
 option, resolve it before continuing — do not carry it forward.
 
-- [ ] **Step 3: Write `tsconfig.json`**
+- [ ] **Step 4: Create `src/start.ts` and register the middleware**
+
+Without this the entire auth layer is dead. `authMiddleware` exists but nothing
+invokes it, so every server function would see `context.user` as `undefined` and
+fail closed forever. The symptom would not appear until Task 4.1, far from the
+cause.
+
+```ts
+// src/start.ts
+import { createStart } from "@tanstack/react-start"
+import { authMiddleware } from "~/auth/middleware"
+
+export const createStartInstance = createStart(() => ({
+  requestMiddleware: [authMiddleware],
+}))
+```
+
+Confirm the export name and the registration key against the installed
+`@tanstack/react-start` before committing — a wrong key type-checks and silently
+never runs. Then prove the middleware is live rather than assuming it:
+
+```bash
+npx vitest run src/auth/
+```
+
+If `createStart` is not exported under that name, or `requestMiddleware` is not a
+recognised key, report it. Do not ship an unverified registration.
+
+- [ ] **Step 5: Write `tsconfig.json`**
 
 ```json
 {
@@ -1756,7 +1835,7 @@ option, resolve it before continuing — do not carry it forward.
 
 `moduleResolution: "bundler"` is required by TanStack Start's generated route types. The `~/*` alias is what makes `~/db` imports resolve.
 
-- [ ] **Step 4: Move the global stylesheet**
+- [ ] **Step 6: Move the global stylesheet**
 
 Recover `globals.css` from git, since Task 3.1 deleted it:
 
@@ -1766,7 +1845,7 @@ git show HEAD~1:src/app/globals.css > src/styles/globals.css
 
 Preserve the `@theme` block exactly — it mirrors the generated design documents. Remove only Next-specific imports if any appear. Replace `@tailwindcss/postcss` usage with the `@import "tailwindcss";` directive that `@tailwindcss/vite` expects.
 
-- [ ] **Step 5: Write the root route**
+- [ ] **Step 7: Write the root route**
 
 `src/routes/__root.tsx`:
 
@@ -1810,7 +1889,7 @@ function RootDocument({ children }: { children: ReactNode }) {
 
 Use `useState` for the `QueryClient`, not a module-level constant — a module-level client is shared across requests on the server and leaks one user's cache into another's response.
 
-- [ ] **Step 6: Write a placeholder index route**
+- [ ] **Step 8: Write a placeholder index route**
 
 `src/routes/index.tsx`:
 
@@ -1822,7 +1901,7 @@ export const Route = createFileRoute("/")({
 })
 ```
 
-- [ ] **Step 7: Verify the app boots**
+- [ ] **Step 9: Verify the app boots**
 
 ```bash
 npm run dev
@@ -1830,7 +1909,7 @@ npm run dev
 
 Expected: the server starts on port 3000 and `http://localhost:3000` renders. `lang="id"` must be present on `<html>`.
 
-- [ ] **Step 8: Run the type check**
+- [ ] **Step 10: Run the type check**
 
 ```bash
 npm run typecheck
@@ -1838,7 +1917,7 @@ npm run typecheck
 
 Expected: clean.
 
-- [ ] **Step 9: Re-run the zero-trace checks**
+- [ ] **Step 11: Re-run the zero-trace checks**
 
 The Task 3.1 Step 8 commands, plus a build-output variant:
 
@@ -1849,7 +1928,7 @@ Test-Path .next
 
 Expected: `.next` absent.
 
-- [ ] **Step 10: Commit**
+- [ ] **Step 12: Commit**
 
 ```bash
 git add -A
@@ -2111,6 +2190,32 @@ export const hitRateLimit = createServerFn({ method: "GET" })
 Call the existing RPC through Drizzle's `sql` template. Do not reimplement rate limiting in application code — the Postgres function is the source of truth and is already correct.
 
 - [ ] **Step 4: Write `src/queries/jobs.ts`**
+
+Every server function here reads the session from the middleware context rather
+than resolving it. `authMiddleware` (Task 2.2) puts `user` in context on every
+call, and **never throws** — a missing session is `user: null`, which is a
+distinguishable state rather than an error. So a protected server function checks
+and returns 401 itself:
+
+```ts
+function requireUser(ctx: { context: { user: { id: string } | null } }) {
+  if (!ctx.context.user) {
+    throw new Response("Unauthorized", { status: 401 })
+  }
+  return ctx.context.user
+}
+```
+
+Two mistakes to avoid here, both of which have already been made once in this
+plan:
+
+- **Do not read `request.headers`.** A `type: "function"` middleware's server
+  handler never receives a `request`; its options are `data`, `context`, `next`,
+  `method`, `serverFnMeta` and `signal`. Session access goes through
+  `getRequestHeaders()` from `@tanstack/react-start/server`, or — better here —
+  through the middleware context, which has already resolved it.
+- **Do not rely on a thrown `UNAUTHENTICATED` sentinel from the middleware.**
+  It cannot distinguish "logged out" from "the session lookup failed".
 
 ```ts
 import { createServerFn } from "@tanstack/react-start"
