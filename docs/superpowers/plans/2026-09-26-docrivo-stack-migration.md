@@ -1186,9 +1186,10 @@ Create `migrations/0011_user_fks.sql`:
 -- public.users is Better Auth's user table, created in this task. See spec 5.3.
 --
 -- Six were `alter table ... add column user_id uuid references auth.users(id)`.
+-- generation_jobs is one of the two that carried ON DELETE CASCADE.
 alter table public.generation_jobs
   add constraint generation_jobs_user_id_fkey
-  foreign key (user_id) references public.users(id);
+  foreign key (user_id) references public.users(id) on delete cascade;
 
 alter table public.crawled_pages
   add constraint crawled_pages_user_id_fkey
@@ -1219,18 +1220,27 @@ alter table public.payment_transactions
   add constraint payment_transactions_user_id_fkey
   foreign key (user_id) references public.users(id);
 
--- One was a named constraint on the table recovered from the production dump.
--- This is the ONLY one of the nine that had ON DELETE CASCADE, and the only one
--- that must keep it.
+-- The second of the two that carried ON DELETE CASCADE. The table itself was
+-- recovered from the production dump rather than from the migration files.
 alter table public.scrape_artifacts
   add constraint scrape_artifacts_user_id_fkey
   foreign key (user_id) references public.users(id) on delete cascade;
 ```
 
-`ON DELETE CASCADE` belongs on `scrape_artifacts` alone. The other eight had no
-cascade clause in the originals, and adding one would silently change delete
-behaviour for jobs, documents, entitlements and payment records. Do not
-generalise it.
+**Exactly two of the nine carry `ON DELETE CASCADE`: `generation_jobs` and
+`scrape_artifacts`. The other seven have no delete rule.** Verified against
+`backup/pre-migration-full.sql`, where the named constraints appear with their
+rules: `generation_jobs_user_id_fkey` at line 8821 and
+`scrape_artifacts_user_id_fkey` at line 8861 are the only two in the `public`
+schema. Two others in the dump carry CASCADE — `_account_user_id_fkey` and
+`user_providers_user_id_fkey` — but those are in the InsForge `auth` schema and
+are not migrated.
+
+Getting this wrong is not cosmetic. Omitting the cascade on `generation_jobs`
+would make a deleted user's jobs **survive** as orphans, where production deleted
+them. Do not derive the delete rules from the migration files: in those, six of
+the nine FKs are inline in `alter table ... add column`, so the rule is not
+visible there at all. Read them from the dump.
 
 Apply and verify all nine:
 
