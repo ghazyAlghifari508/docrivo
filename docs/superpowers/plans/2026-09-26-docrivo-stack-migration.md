@@ -503,10 +503,16 @@ scope here or in any later task. Read the password back out of `.env.local`, whi
 is the single source of truth for it:
 
 ```bash
-$env:PGPASSWORD = ((Get-Content .env.local -Raw) -match 'DATABASE_URL=postgres://docrivo:([^@]+)@') ? $Matches[1] : $null
-if (-not $env:PGPASSWORD) { throw "could not read the password from DATABASE_URL in .env.local" }
+$pw = $null
+if ((Get-Content .env.local -Raw) -match 'DATABASE_URL=postgres://docrivo:([^@]+)@') { $pw = $Matches[1] }
+if (-not $pw) { throw "could not read the password from DATABASE_URL in .env.local" }
+$env:PGPASSWORD = $pw
 & "C:\Program Files\PostgreSQL\17\bin\psql.exe" -U docrivo -d docrivo -w -t -A -c "select current_user, current_database();"
 ```
+
+Do not use the `? :` ternary form for this. The shell on this machine is Windows
+PowerShell **5.1**, where the ternary operator does not exist; it was introduced in
+PowerShell 7. A brief using it fails with a parse error.
 
 Expected: `docrivo|docrivo`. Clear the variable afterwards with `Remove-Item Env:\PGPASSWORD`.
 
@@ -844,22 +850,34 @@ trigger` function used by the five `trg_sync_user_id` triggers
 (`0006_user_id_columns.sql:112`), and a trigger function cannot be invoked
 directly — there is nothing to protect.
 
-Apply and confirm no function remains `PUBLIC`-executable:
+Apply and confirm no **callable** function remains `PUBLIC`-executable:
 
 ```bash
 & "C:\Program Files\PostgreSQL\17\bin\psql.exe" -U docrivo -d docrivo -w -v ON_ERROR_STOP=1 -f migrations/0010_function_revoke.sql
-& "C:\Program Files\PostgreSQL\17\bin\psql.exe" -U docrivo -d docrivo -w -t -A -c "select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and has_function_privilege('public', p.oid, 'EXECUTE');"
+& "C:\Program Files\PostgreSQL\17\bin\psql.exe" -U docrivo -d docrivo -w -t -A -c "select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.prorettype <> 'trigger'::regtype and has_function_privilege('public', p.oid, 'EXECUTE');"
 ```
 
-Expected: `0`. Any non-zero count means a function is still world-executable;
-find it with:
+Expected: `0`.
+
+**The `prorettype <> 'trigger'` filter is load-bearing.** Without it the count is `1`,
+because `sync_user_id_from_job()` is deliberately left unrevoked. It is a
+`returns trigger` function wired to five `trg_sync_user_id` triggers and cannot be
+invoked directly — PostgreSQL answers `trigger functions can only be called as
+triggers`. Counting the raw grant measures the ACL, not the exposure. The check
+must ask "can a non-owner call this", and a trigger function is not callable at
+all.
+
+To confirm the residual grant is the trigger function and nothing else:
 
 ```bash
-& "C:\Program Files\PostgreSQL\17\bin\psql.exe" -U docrivo -d docrivo -w -t -A -c "select p.proname, pg_get_function_identity_arguments(p.oid) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and has_function_privilege('public', p.oid, 'EXECUTE');"
+& "C:\Program Files\PostgreSQL\17\bin\psql.exe" -U docrivo -d docrivo -w -t -A -F'|' -c "select p.proname, p.prorettype::regtype, has_function_privilege('public', p.oid, 'EXECUTE'), has_function_privilege('docrivo', p.oid, 'EXECUTE') from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and has_function_privilege('public', p.oid, 'EXECUTE');"
 ```
 
-Note the `docrivo` role itself is the owner and retains EXECUTE regardless — that
-is correct and intended. The check is about `PUBLIC`, not about the app role.
+Expected: exactly one row, `sync_user_id_from_job`, `trigger`, public `t`, owner
+`t`. Any other row means a real gap.
+
+The `docrivo` role retains EXECUTE as the owner regardless — that is correct and
+intended. The check is about `PUBLIC`, not about the app role.
 
 - [ ] **Step 7: Apply the same baseline to `docrivo_test`**
 
