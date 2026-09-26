@@ -474,8 +474,13 @@ git commit -m "chore: install TanStack Start, Drizzle, Better Auth, and Vite at 
 
 - [ ] **Step 1: Create the role**
 
+Choose a local-only development password and keep it in one variable for this
+task. It is a throwaway credential for a loopback connection on a machine with
+`trust` auth, but it must not be written into any tracked file.
+
 ```bash
-& "C:\Program Files\PostgreSQL\17\bin\psql.exe" -U postgres -d postgres -w -c "create role docrivo login password 'docrivo_local_dev'"
+$PW = "<pick-a-dev-password>"
+& "C:\Program Files\PostgreSQL\17\bin\psql.exe" -U postgres -d postgres -w -c "create role docrivo login password '$PW'"
 ```
 
 Expected: `CREATE ROLE`. The role is deliberately **not** a superuser and has no `CREATEDB`, matching the convention used by the `kopikita`, `novaplan`, `padelkuy`, and `zona` roles on this instance.
@@ -490,27 +495,56 @@ Expected: `CREATE ROLE`. The role is deliberately **not** a superuser and has no
 - [ ] **Step 3: Verify the role can connect to its own database**
 
 ```bash
-$env:PGPASSWORD="docrivo_local_dev"
+$env:PGPASSWORD=$PW
 & "C:\Program Files\PostgreSQL\17\bin\psql.exe" -U docrivo -d docrivo -w -t -A -c "select current_user, current_database();"
 ```
 
 Expected: `docrivo|docrivo`. Clear the variable afterwards with `Remove-Item Env:\PGPASSWORD`.
 
-- [ ] **Step 4: Confirm the role cannot reach the other project databases**
+- [ ] **Step 4: Record what the `docrivo` role can and cannot reach**
+
+PostgreSQL grants `CONNECT` to `PUBLIC` on every database by default, so a role
+with no explicit grant on a database can still connect to it. The expectation
+here is therefore **not** "permission denied". The correct finding is that the
+instance is permissive by default, and the honest report is that measurement.
 
 ```bash
-& "C:\Program Files\PostgreSQL\17\bin\psql.exe" -U docrivo -d kopikita -w -t -A -c "select 1"
+& "C:\Program Files\PostgreSQL\17\bin\psql.exe" -U postgres -d postgres -w -t -A -c "select datname, coalesce(datacl::text,'<default: CONNECT to PUBLIC>') from pg_database where not datistemplate order by 1;"
 ```
 
-Expected: `permission denied for database kopikita`. This proves least privilege — a migration bug cannot reach the six unrelated databases on this instance. Then set `CONNECT` back to default for the docrivo databases only if needed.
+Expected: every row either shows an ACL granting `PUBLIC` connect, or the
+`<default: CONNECT to PUBLIC>` marker. Then measure the actual reach:
+
+```bash
+& "C:\Program Files\PostgreSQL\17\bin\psql.exe" -U docrivo -d kopikita -w -t -A -c "select count(*) from pg_tables where schemaname='public';"
+```
+
+Expected: a non-zero table count, confirming the `docrivo` role **can** read
+another project's schema. Report this as a finding; do not attempt to fix it.
+
+**Why this is recorded rather than fixed:** the root cause is
+`pg_hba.conf` set to `trust` for all local connections, which predates this
+migration and applies to the whole instance. While `trust` is in effect,
+revoking `CONNECT` from `PUBLIC` changes nothing — authentication, not the
+ACL, is the gate, so any local process can already connect as any role. The
+real fix is switching `pg_hba.conf` to `scram-sha-256` and setting passwords on
+all seven project roles, which touches the user's other six projects and is out
+of scope for this migration. See spec §5.2.
+
+**Why this does not block Task 1.2:** PostgreSQL has no cross-database query
+mechanism. There is no `dblink` and no cross-database join, so a migration
+executed against the `docrivo` database cannot read or write any other
+database's data without an explicit connection change. Drizzle Kit targets
+exactly one database, named in the connection string. The over-reach is a real
+instance-hardening finding, not a migration-integrity risk.
 
 - [ ] **Step 5: Write the connection string to `.env.local`**
 
 Append to `.env.local`:
 
 ```
-DATABASE_URL=postgres://docrivo:docrivo_local_dev@localhost:5432/docrivo
-DATABASE_URL_TEST=postgres://docrivo:docrivo_local_dev@localhost:5432/docrivo_test
+DATABASE_URL=postgres://docrivo:<same-password>@localhost:5432/docrivo
+DATABASE_URL_TEST=postgres://docrivo:<same-password>@localhost:5432/docrivo_test
 ```
 
 - [ ] **Step 6: Commit nothing**
@@ -658,7 +692,7 @@ git commit -m "refactor(db): derive cleaned migration baseline without InsForge 
 - [ ] **Step 1: Apply to the empty development database**
 
 ```bash
-$env:PGPASSWORD="docrivo_local_dev"
+$env:PGPASSWORD=$PW
 foreach ($f in (Get-ChildItem migrations -Filter "0*.sql" | Sort-Object Name)) {
   Write-Output "applying $($f.Name)"
   & "C:\Program Files\PostgreSQL\17\bin\psql.exe" -U docrivo -d docrivo -w -v ON_ERROR_STOP=1 -f $f.FullName
@@ -809,7 +843,7 @@ export default defineConfig({
   schema: "./src/db/schema.ts",
   out: "./drizzle",
   dbCredentials: {
-    url: process.env.DATABASE_URL ?? "postgres://docrivo:docrivo_local_dev@localhost:5432/docrivo",
+    url: process.env.DATABASE_URL ?? "postgres://docrivo:<password>@localhost:5432/docrivo",
   },
 })
 ```
