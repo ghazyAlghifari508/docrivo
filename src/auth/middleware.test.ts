@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { isAdminEmail } from "./admin"
+import { isNotFound } from "@tanstack/react-router"
+import { isAdminEmail, requireAdmin } from "./admin"
 import { adminAllowlist } from "./allowlist"
 
 // The server handler reads the request through `getRequestHeaders()`, which needs
@@ -156,5 +157,55 @@ describe("admin allowlist", () => {
     process.env.ADMIN_EMAILS = `${MEMBER},${SECOND_MEMBER}`
     expect(() => isAdminEmail("")).not.toThrow()
     expect(() => isAdminEmail(OUTSIDER)).not.toThrow()
+  })
+})
+
+/** Returns what `run` threw, or `undefined` if it completed. */
+function thrownBy(run: () => void): unknown {
+  try {
+    run()
+  } catch (thrown) {
+    return thrown
+  }
+  return undefined
+}
+
+describe("requireAdmin", () => {
+  // `ADMIN_EMAILS` is present but empty in `.env.local`, which would make the
+  // admitted case below unpassable. Stub it here rather than editing the
+  // environment, so the fixture address never becomes a real admin.
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
+  it("rejects a caller with no session", () => {
+    // `toThrow`, not "does not throw": `notFound()` returns its payload rather
+    // than raising it, so a bare `notFound()` here would let every visitor
+    // through and this assertion is the only thing standing in the way.
+    expect(() => requireAdmin(null)).toThrow()
+    // `toThrow()` alone is not enough for the null case. With the `throw`
+    // dropped, control falls through to `sessionUser.email` and a
+    // `TypeError: Cannot read properties of null` satisfies it. The refusal has
+    // to be the not-found payload specifically, or a crash is being reported
+    // as a rejection.
+    expect(isNotFound(thrownBy(() => requireAdmin(null)))).toBe(true)
+  })
+
+  it("admits an allowlisted address", () => {
+    vi.stubEnv("ADMIN_EMAILS", MEMBER)
+    expect(() => requireAdmin({ email: MEMBER })).not.toThrow()
+  })
+
+  it("rejects an address that is not on the list", () => {
+    vi.stubEnv("ADMIN_EMAILS", `${MEMBER},${SECOND_MEMBER}`)
+    expect(() => requireAdmin({ email: OUTSIDER })).toThrow()
+  })
+
+  it("refuses with a not-found payload, never a 403", () => {
+    // A 403 confirms the route exists; the 404 is the whole point of the rule.
+    vi.stubEnv("ADMIN_EMAILS", MEMBER)
+
+    expect(isNotFound(thrownBy(() => requireAdmin(null)))).toBe(true)
+    expect(isNotFound(thrownBy(() => requireAdmin({ email: OUTSIDER })))).toBe(true)
   })
 })
