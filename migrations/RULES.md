@@ -16,11 +16,23 @@ in it.
   exist outside InsForge.
 - All `grant` / `revoke` targeting `anon` or `authenticated` (10 statements).
   Neither role exists outside InsForge, so each statement errored.
-- Three migrations dropped in full because every line in them was an RLS
-  statement: `20260706072000_explicit-deny-rls-policies.sql`,
-  `20260710133821_optimize-rls-policy-performance.sql`, and the policy sections
-  of `20260706070500_rls-and-fk-indexes.sql` and
-  `20260710132820_fix-rls-ownership-policies.sql`.
+- Two migrations dropped in full, because every executable statement in them was
+  an RLS statement and nothing else survived:
+  `20260706072000_explicit-deny-rls-policies.sql` (7 `create policy` do-blocks)
+  and `20260710133821_optimize-rls-policy-performance.sql` (17 `drop policy` +
+  17 `create policy`). Neither contains a table, index, column, function or
+  grant statement.
+- Two further migrations are policy-only *in their RLS half* but were **not**
+  dropped in full; each contributed a non-policy fragment that is in the
+  baseline:
+  - `20260706070500_rls-and-fk-indexes.sql` — 14 `alter table ... enable|force
+    row level security` statements dropped; its 2 `create index` statements
+    (`idx_generation_jobs_retry_of`, `idx_extracted_assets_page_id`) carried into
+    `0001_init.sql` as the last two statements of that file.
+  - `20260710132820_fix-rls-ownership-policies.sql` — every policy, and its
+    `alter table public.scrape_artifacts enable|force row level security`,
+    dropped; only the `generation_jobs.user_id` column and its index survived,
+    carried into `0006_user_id_columns.sql` (see Added below).
 
 Row-level security is not re-created here. It is re-derived against Better Auth
 session claims in a later task, once there is a `current_setting`-based

@@ -35,7 +35,12 @@ begin
 end $$;
 
 -- 2. Add user_id columns + indexes to all 5 child tables.
---    Original header, kept for context:
+--    Original header, abridged and lightly edited. It was 13 lines; the two
+--    paragraphs dropped from it both describe work this baseline does not do --
+--    the Advisor's "column does not exist" diagnosis of the suggested
+--    CREATE INDEX, and the "rewrite policies from EXISTS pattern to direct
+--    comparison" step. Editing: the original em dash became "--". The reword of
+--    "anon"/"authenticated" below is the same one made in 0001_init.sql.
 --      Fix 5 InsForge Advisor false-positive "missing-rls-index" warnings. The
 --      Advisor thinks child tables have `user_id` columns because the RLS
 --      policies reference them via EXISTS subqueries on generation_jobs. The

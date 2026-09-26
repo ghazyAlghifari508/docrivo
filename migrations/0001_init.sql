@@ -9,7 +9,15 @@
 -- full transformation. SQL below is verbatim except where a comment marks a
 -- deliberate edit.
 --
--- Historical header from 20260706041528_init-designmd.sql, kept for context:
+-- Historical header from 20260706041528_init-designmd.sql, kept for context.
+-- This one block is NOT verbatim; its edits are:
+--   * "anon sessions" -> "guest sessions". Required: the literal role name
+--     `anon` had to leave this file entirely, and a header that reintroduced it
+--     while claiming to be a historical quote would be misleading.
+--   * Non-ASCII characters in the original replaced with ASCII equivalents
+--     (the section sign in "PRD 11" dropped, an em dash written "--", a
+--     right arrow written "->"). Cosmetic only; no wording beyond the reword
+--     above was changed.
 --   DesignMD Generator schema (PRD 11). MVP: guest sessions, no users table.
 --   ponytail: users/auth deferred to Phase 2; job carries session_id text instead.
 --   Accessed server-only via InsForge admin key (Next.js route handlers + worker),
