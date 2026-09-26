@@ -1,3 +1,9 @@
+-- 0003_atomic_retry.sql -- cleaned migration baseline, part 3 of 8.
+--
+-- Derived verbatim from 20260706062520_atomic-retry.sql. Contains no InsForge
+-- dependency. The originals are preserved in git history; see
+-- migrations/RULES.md.
+
 -- Atomic retry guard: one retry job per failed/cancelled source job.
 
 create unique index if not exists generation_jobs_retry_of_once

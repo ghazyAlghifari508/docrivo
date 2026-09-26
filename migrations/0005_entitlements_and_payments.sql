@@ -1,3 +1,20 @@
+-- 0005_entitlements_and_payments.sql -- cleaned migration baseline, part 5 of 8.
+--
+-- Derived from 20260710150000_entitlements-and-payments.sql.
+--
+-- The originals are preserved in git history. See migrations/RULES.md.
+--
+-- Deliberate edits, all in RULES.md's "Removed"/"Deferred" sections:
+--   * section 4 dropped in full (6 `alter table ... enable|force row level
+--     security` + 3 `create policy` do-blocks, all naming the two InsForge
+--     client roles).
+--   * the foreign key to the InsForge auth users table removed from
+--     `user_entitlements.user_id` and `payment_transactions.user_id`. The
+--     columns keep their type, nullability and constraints; only the FKs are
+--     deferred to 0011_user_fks.sql.
+-- Everything else -- plans seed rows, indexes, and both SECURITY DEFINER quota
+-- RPCs -- is verbatim.
+
 -- Payment gateway + lifetime quota entitlements (Midtrans sandbox).
 --
 -- Model: lifetime one-time purchase. Buying a plan sets the user's plan and
@@ -36,7 +53,7 @@ on conflict (plan) do update set
 
 -- 2. user_entitlements: one row per user.
 create table if not exists public.user_entitlements (
-  user_id        uuid primary key references auth.users(id),
+  user_id        uuid primary key,
   plan           text not null default 'free' references public.plans(plan),
   designmd_used  int not null default 0,
   scrape_used    int not null default 0,
@@ -48,7 +65,7 @@ create index if not exists idx_user_entitlements_plan on public.user_entitlement
 -- 3. payment_transactions: Midtrans order tracking.
 create table if not exists public.payment_transactions (
   id            uuid primary key default gen_random_uuid(),
-  user_id       uuid not null references auth.users(id),
+  user_id       uuid not null,
   order_id      text not null unique,
   plan          text not null references public.plans(plan),
   gross_amount  int not null,
@@ -59,37 +76,7 @@ create table if not exists public.payment_transactions (
 create index if not exists idx_payment_transactions_user_id on public.payment_transactions(user_id);
 create index if not exists idx_payment_transactions_plan on public.payment_transactions(plan);
 
--- 4. RLS. These tables are server-only (admin key via route handlers). Direct
---    client access is intentionally denied to avoid self-upgrade/payment spoofing.
-alter table public.plans enable row level security;
-alter table public.plans force row level security;
-alter table public.user_entitlements enable row level security;
-alter table public.user_entitlements force row level security;
-alter table public.payment_transactions enable row level security;
-alter table public.payment_transactions force row level security;
-
-do $$
-begin
-  create policy "Deny direct plan access"
-  on public.plans for all to anon, authenticated using (false) with check (false);
-exception when duplicate_object then null;
-end $$;
-
-do $$
-begin
-  create policy "Deny direct entitlement access"
-  on public.user_entitlements for all to anon, authenticated using (false) with check (false);
-exception when duplicate_object then null;
-end $$;
-
-do $$
-begin
-  create policy "Deny direct payment transaction access"
-  on public.payment_transactions for all to anon, authenticated using (false) with check (false);
-exception when duplicate_object then null;
-end $$;
-
--- 5. consume_quota: atomically reserve one unit of quota for a user+kind.
+-- 4. consume_quota: atomically reserve one unit of quota for a user+kind.
 --    Returns jsonb { allowed, plan, used, quota, remaining }.
 --    quota null => unlimited (allowed, no increment).
 create or replace function public.consume_quota(p_user uuid, p_kind text)
@@ -149,7 +136,7 @@ begin
 end;
 $$;
 
--- 6. refund_quota: give back one unit (used on synchronous scrape failure).
+-- 5. refund_quota: give back one unit (used on synchronous scrape failure).
 create or replace function public.refund_quota(p_user uuid, p_kind text)
 returns void
 language plpgsql
