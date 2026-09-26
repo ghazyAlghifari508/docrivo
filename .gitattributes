@@ -1,0 +1,18 @@
+# Normalise line endings so the working tree matches the repository on every
+# checkout, regardless of the machine's core.autocrlf setting.
+#
+# Without this, a Windows editor can rewrite a file as LF, a subagent's tooling
+# can rewrite it as CRLF, and `git status` then shows phantom whole-file diffs.
+# That happened twice during this migration and cost a debugging pass both
+# times.
+
+* text=auto eol=lf
+
+# Generated artefacts -- never committed, and never line-ending sensitive.
+node_modules/ -text
+.next/ -text
+.output/ -text
+drizzle/ -text
+var/ -text
+backup/ -text
+.vitest/ -text
