@@ -62,4 +62,8 @@ next-env.d.ts
 backup/
 var/
 
+# drizzle-kit output: the baseline was applied by hand, so a stray
+# drizzle-kit migrate or push would try to CREATE TABLE what already exists
+/drizzle/
+
 .worktrees/
