@@ -264,8 +264,9 @@ for pat in (r"CREATE INDEX[^;]*scrape_artifacts[^;]*;",
 
 out += ["", "-- Intentionally NOT carried forward (see spec 5.3 / 5.4):",
         "--   FORCE ROW LEVEL SECURITY, and all 9 CREATE POLICY statements.",
-        "--   The FOREIGN KEY to auth.users(id) is rewritten to public.users(id)",
-        "--   when Task 1.2 builds the cleaned baseline.", ""]
+        "--   The FOREIGN KEY to auth.users(id) is DROPPED, not re-pointed; it is",
+        "--   re-added in migration 0011_user_fks.sql after Better Auth creates",
+        "--   public.users, because the baseline must apply to an empty database.", ""]
 
 pathlib.Path("backup/scrape-artifacts-ddl.sql").write_text("\n".join(out), encoding="utf-8")
 print("\n".join(out))
@@ -627,10 +628,20 @@ infrastructure that a stock PostgreSQL instance does not provide.
   exists outside InsForge, so each statement errored.
 - The 3 RLS-only migrations, whose entire content was policies.
 
-## Rewritten
+## Deferred
 
-- `references auth.users(id)` became `references public.users(id)`, pointing
-  at the Better Auth user table.
+- **Deferred:** the two foreign keys referencing `auth.users(id)` --
+  `generation_jobs_user_id_fkey` and `scrape_artifacts_user_id_fkey` -- are
+  dropped from the baseline and re-added in migration `0011_user_fks.sql`,
+  which Task 2.1 creates after Better Auth has made `public.users` exist.
+
+  They cannot be re-pointed at `public.users(id)` inside the baseline, because
+  the baseline's contract is that it applies cleanly to an *empty* database and
+  `public.users` does not exist until Task 2.1. Referencing a not-yet-created
+  table would fail at Task 1.3.
+
+  The columns themselves (`generation_jobs.user_id`, `scrape_artifacts.user_id`,
+  and the rest) are kept in the baseline; only the constraints are deferred.
 
 ## Preserved verbatim
 
@@ -684,7 +695,11 @@ Prepend a comment:
 
 `0005` is a straight copy of `20260710150000_entitlements-and-payments.sql` — it creates `plans`, `user_entitlements`, `payment_transactions` and their functions.
 
-`0006` comes from `20260710140400_add-user-id-to-child-tables.sql`. That file's 10 `auth.uid()` uses are all inside policy bodies. Strip every `create policy` / `drop policy` / `force row level security` statement, keep every `alter table ... add column user_id uuid` and every `create index`. Then rewrite any surviving `references auth.users(id)` to `references public.users(id)`.
+`0006` comes from `20260710140400_add-user-id-to-child-tables.sql`. That file's 10 `auth.uid()` uses are all inside policy bodies. Strip every `create policy` / `drop policy` / `force row level security` statement, keep every `alter table ... add column user_id uuid` and every `create index`. Then **drop** any `references auth.users(id)` constraint rather than re-pointing
+it. Those two foreign keys are re-added in migration `0011_user_fks.sql`, which
+Task 2.1 creates once Better Auth has made `public.users` exist. Re-pointing
+them here would reference a table that does not yet exist and would fail when
+Task 1.3 applies the baseline to an empty database.
 
 Verify none remain:
 
@@ -1073,7 +1088,46 @@ Expected: 4 tables created. Verify:
 
 Expected: `uuid`. If it is `text`, `generateId` was not applied and every `user_id uuid` foreign-key relationship will break.
 
-- [ ] **Step 9: Generate the secret and add env vars**
+- [ ] **Step 9: Re-add the two deferred user foreign keys**
+
+Task 1.2 dropped `generation_jobs_user_id_fkey` and
+`scrape_artifacts_user_id_fkey` because `public.users` did not exist when the
+baseline was written. Now it does. Create `migrations/0011_user_fks.sql`:
+
+```sql
+-- Re-adds the two foreign keys that the cleaned baseline (Task 1.2) had to
+-- drop, because public.users did not exist when the baseline was written.
+-- public.users is Better Auth's user table, created in this task. See spec 5.3.
+
+alter table public.generation_jobs
+  add constraint generation_jobs_user_id_fkey
+  foreign key (user_id) references public.users(id) on delete cascade;
+
+alter table public.scrape_artifacts
+  add constraint scrape_artifacts_user_id_fkey
+  foreign key (user_id) references public.users(id) on delete cascade;
+```
+
+`ON DELETE CASCADE` is preserved from the original InsForge definitions, so
+deleting a user still cascades to their jobs and scrapes.
+
+Check the baseline's other `user_id` columns too — `crawled_pages`,
+`design_extractions`, `generated_documents`, and others gained a `user_id` in
+migration `0006` — and add a foreign key for each of those that had one
+originally. Compare against the constraints recorded in
+`backup/scrape-artifacts-ddl.sql` and the original migration files rather than
+assuming which ones existed.
+
+Apply and verify:
+
+```bash
+& "C:\Program Files\PostgreSQL\17\bin\psql.exe" -U docrivo -d docrivo -w -v ON_ERROR_STOP=1 -f migrations/0011_user_fks.sql
+& "C:\Program Files\PostgreSQL\17\bin\psql.exe" -U docrivo -d docrivo -w -t -A -c "select conrelid::regclass, conname from pg_constraint where contype='f' and conname like '%user_id%' order by 1;"
+```
+
+Expected: at least the two named constraints, each pointing at `users`.
+
+- [ ] **Step 10: Generate the secret and add env vars**
 
 ```bash
 node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
@@ -1088,11 +1142,11 @@ GOOGLE_CLIENT_ID=<from Google Cloud Console>
 GOOGLE_CLIENT_SECRET=<from Google Cloud Console>
 ```
 
-- [ ] **Step 10: Add the Google OAuth client**
+- [ ] **Step 11: Add the Google OAuth client**
 
 In Google Cloud Console, create an OAuth 2.0 Client ID of type "Web application" with authorised redirect URI `http://localhost:3000/api/auth/callback/google`.
 
-- [ ] **Step 11: Commit**
+- [ ] **Step 12: Commit**
 
 ```bash
 git add package.json package-lock.json src/auth/ src/db/
