@@ -112,20 +112,37 @@ server-only                           Next-only import guard
 
 The single irreversible phase. Nothing else starts until it passes.
 
-### Task 0.1: Export and verify InsForge data
+### Task 0.1: Recover and verify the production data from the local backup
+
+The InsForge project is **paused**: `projects get` reports `Status: paused`, every
+data-plane call returns `503 OSS request failed`, and `backups list` reports
+`No backups found`. Bringing it online requires a paid Pro upgrade, so no live
+export is possible.
+
+The user already holds a full database dump at
+`C:\Users\alghi\Downloads\20260721_021743.sql.gz` (1,731,529 bytes
+uncompressed, 11,109 lines, PostgreSQL text format). This task adopts that file
+as the input in place of a live export. **No cloud operation is performed and
+no project is restored.**
+
+The dump is a whole-instance backup, so it contains InsForge platform schemas
+alongside the application schema. Those platform schemas are discarded, not
+migrated — see spec §5.3 and Task 1.2.
 
 **Files:**
 - Create: `backup/pre-migration-full.sql` (gitignored)
 - Create: `backup/scrape-artifacts-ddl.sql` (gitignored)
-- Create: `backup/row-counts-before.txt` (gitignored)
+- Create: `backup/row-counts-before.json` (gitignored)
+- Create: `backup/identity-reference.json` (gitignored)
+- Modify: `.gitignore`
 
 **Interfaces:**
-- Consumes: the linked InsForge project (`2kz3mpgr` in region `ap-southeast`)
-- Produces: `backup/pre-migration-full.sql` — the authoritative data dump; `backup/scrape-artifacts-ddl.sql` — the `create table` statement for `scrape_artifacts` consumed by Task 1.2; `backup/row-counts-before.txt` — the reconciliation baseline consumed by Task 8.1
+- Consumes: `C:\Users\alghi\Downloads\20260721_021743.sql.gz`
+- Produces: `backup/pre-migration-full.sql` — the schema and data baseline consumed by Task 8.1; `backup/scrape-artifacts-ddl.sql` — the `scrape_artifacts` definition consumed by Task 1.2; `backup/row-counts-before.json` — the reconciliation baseline consumed by Task 8.1; `backup/identity-reference.json` — the pre-migration user records consumed by Task 8.1 Step 2
 
 - [ ] **Step 1: Ensure `backup/` is gitignored**
 
-Add to `.gitignore`:
+Add to `.gitignore` if not already present:
 
 ```
 backup/
@@ -138,99 +155,225 @@ Verify:
 git check-ignore -v backup/pre-migration-full.sql
 ```
 
-Expected: prints a matching `.gitignore` rule. The dump contains production user emails and payment records and must never be committed.
+Expected: prints a matching `.gitignore` rule. The dump contains production user
+emails and payment records and must never be committed.
 
-- [ ] **Step 2: Export the full database including functions**
+- [ ] **Step 2: Decompress the dump**
 
-```bash
-npx -y @insforge/cli db export --include-functions --include-sequences -o backup/pre-migration-full.sql
-```
-
-- [ ] **Step 3: Take a managed backup as a second copy**
+Python 3.14 is at `C:\Python314\python.exe`. `gzip`, `7z` and WSL are unavailable.
 
 ```bash
-npx -y @insforge/cli backups create --name pre-migration
-npx -y @insforge/cli backups list
+python -c "import gzip,shutil,pathlib; src=pathlib.Path(r'C:\Users\alghi\Downloads\20260721_021743.sql.gz'); dst=pathlib.Path('backup/pre-migration-full.sql'); dst.parent.mkdir(parents=True,exist_ok=True); shutil.copyfileobj(gzip.open(src,'rb'), dst.open('wb'))"
 ```
 
-Expected: the new backup appears with a completion timestamp. A local file plus a managed snapshot means one failed path does not lose the data.
-
-- [ ] **Step 4: Verify the export is not empty and contains the functions**
+- [ ] **Step 3: Verify the decompressed file is complete**
 
 ```bash
-wc -l backup/pre-migration-full.sql
-Select-String -Path backup/pre-migration-full.sql -Pattern "create (or replace )?function" -CaseSensitive:$false | Measure-Object | Select-Object -ExpandProperty Count
+(Get-Item backup/pre-migration-full.sql).Length
 ```
 
-Expected: a non-trivial line count, and **10** functions. If the count is 0, `--include-functions` did not take effect and the export must be retried before proceeding.
+Expected: `1731529` bytes. A different size means the transfer or decompression
+is truncated — stop and report.
 
-- [ ] **Step 5: Record row counts per table**
+- [ ] **Step 4: Count the application schema objects**
 
 ```bash
-@"
-select relname, n_live_tup from pg_stat_user_tables order by relname;
-"@ | Set-Content backup/counts-query.sql
+python -c "import re,pathlib; t=pathlib.Path('backup/pre-migration-full.sql').read_text(encoding='utf-8',errors='replace'); print('tables  :', len({m.lower() for m in re.findall(r'CREATE TABLE (?:IF NOT EXISTS )?public\.(\w+)',t,re.I)})); print('funcs   :', len(set(re.findall(r'CREATE (?:OR REPLACE )?FUNCTION public\.(\w+)',t,re.I)))); print('policies:', len(re.findall(r'CREATE POLICY',t,re.I)))"
 ```
 
-Run it through the CLI's raw query path and save the output:
+Expected: **11** distinct `public.*` tables, **11** distinct `public.*` functions,
+and 21 policies. The 11 functions are `claim_next_job`, `consume_quota`,
+`get_user_entitlement`, `hit_rate_limit`, `list_plans`, `refund_quota`,
+`retry_generation_job`, `sync_user_id_from_job` plus three more; report the full
+list. The policy count is 21 because later migrations recreated policies, so
+some appear more than once. A table count other than 11 means a table is missing
+from the dump — report it rather than proceeding.
 
-```bash
-npx -y @insforge/cli db query "select relname, n_live_tup from pg_stat_user_tables order by relname" --json > backup/row-counts-before.json
+- [ ] **Step 5: Record exact row counts per table**
+
+`pg_stat_user_tables.n_live_tup` is an estimate and is not acceptable as a
+reconciliation baseline. Count the `COPY` blocks directly. In this dump format a
+data block starts at `COPY <table> (<columns>) FROM stdin;` and ends at a line
+containing exactly `\.`:
+
+```python
+import json, re, pathlib
+
+text = pathlib.Path("backup/pre-migration-full.sql").read_text(encoding="utf-8", errors="replace")
+
+TABLES = ["generation_jobs","crawled_pages","extracted_assets","design_extractions",
+          "generated_documents","job_logs","rate_limits","scrape_artifacts",
+          "plans","user_entitlements","payment_transactions"]
+
+def count_rows(table):
+    m = re.search(r"^COPY " + re.escape(table) + r"\s*\([^)]*\)\s*FROM stdin;\s*\n(.*?)^\\\.\s*$",
+                  text, re.M | re.S)
+    if not m:
+        return None
+    body = m.group(1)
+    return len([l for l in body.split("\n") if l.strip()]) if body.strip() else 0
+
+counts = {t: count_rows("public." + t) for t in TABLES}
+counts["_total"] = sum(v for v in counts.values() if isinstance(v, int))
+pathlib.Path("backup/row-counts-before.json").write_text(json.dumps(counts, indent=2))
+print(json.dumps(counts, indent=2))
 ```
 
-Expected: 11 tables listed, including `scrape_artifacts`.
+Expected values, verified against the dump on 2026-09-26:
 
-- [ ] **Step 6: Recover the missing `scrape_artifacts` DDL**
+| Table | Rows |
+|---|---|
+| `generation_jobs` | 50 |
+| `crawled_pages` | 118 |
+| `extracted_assets` | 1820 |
+| `design_extractions` | 23 |
+| `generated_documents` | 22 |
+| `job_logs` | 113 |
+| `rate_limits` | 36 |
+| `scrape_artifacts` | 0 |
+| `plans` | 4 |
+| `user_entitlements` | 2 |
+| `payment_transactions` | 3 |
+| **total** | **2191** |
 
-This is the authoritative source for the F4 fix. It must come from the live database, never from reading application code.
+A `null` value means the table has no `COPY` block at all, which is different
+from a table with zero rows. Report the distinction.
 
-```bash
-npx -y @insforge/cli db query "select column_name, data_type, is_nullable, column_default from information_schema.columns where table_schema='public' and table_name='scrape_artifacts' order by ordinal_position" --json
+- [ ] **Step 6: Extract the `scrape_artifacts` definition**
+
+This is the authoritative source for spec finding F4. The table is referenced 17
+times across 3 migration files and has zero `CREATE TABLE` statements in the
+repository. It exists in the dump because the live database had it.
+
+```python
+import pathlib, re
+
+text = pathlib.Path("backup/pre-migration-full.sql").read_text(encoding="utf-8", errors="replace")
+out = ["-- Recovered from backup/pre-migration-full.sql on 2026-09-26.",
+       "-- Source: C:\\Users\\alghi\\Downloads\\20260721_021743.sql.gz",
+       "-- The repository's migrations reference this table 17 times and never",
+       "-- create it (spec finding F4). Extracted, not reconstructed.", ""]
+
+m = re.search(r"CREATE TABLE public\.scrape_artifacts\s*\([^;]*\);", text, re.I | re.S)
+out.append(m.group(0) if m else "-- CREATE TABLE NOT FOUND")
+
+for pat in (r"CREATE INDEX[^;]*scrape_artifacts[^;]*;",
+            r"ALTER TABLE ONLY public\.scrape_artifacts\s+ADD CONSTRAINT[^;]*;"):
+    out += ["", *[h for h in re.findall(pat, text, re.I | re.S)]]
+
+out += ["", "-- Intentionally NOT carried forward (see spec 5.3 / 5.4):",
+        "--   FORCE ROW LEVEL SECURITY, and all 9 CREATE POLICY statements.",
+        "--   The FOREIGN KEY to auth.users(id) is rewritten to public.users(id)",
+        "--   when Task 1.2 builds the cleaned baseline.", ""]
+
+pathlib.Path("backup/scrape-artifacts-ddl.sql").write_text("\n".join(out), encoding="utf-8")
+print("\n".join(out))
 ```
 
-Then reconstruct the DDL from that output:
+Expected table body, verified against the dump:
 
 ```sql
-create table public.scrape_artifacts (
-  -- one line per row returned above, in ordinal_position order
+CREATE TABLE public.scrape_artifacts (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    user_id uuid NOT NULL,
+    source_url text NOT NULL,
+    status integer DEFAULT 200 NOT NULL,
+    html text NOT NULL,
+    preview_html text NOT NULL,
+    metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
 );
 ```
 
-Also capture constraints and indexes:
+Note `status` is `integer`, not `text`, and `user_id` is `NOT NULL`. Both matter
+for the Drizzle schema in Task 1.4. The extracted constraints are
+`scrape_artifacts_pkey PRIMARY KEY (id)` and
+`scrape_artifacts_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE`,
+plus index `idx_scrape_artifacts_user_id ON public.scrape_artifacts USING btree (user_id, created_at DESC)`.
 
-```bash
-npx -y @insforge/cli db query "select indexdef from pg_indexes where schemaname='public' and tablename='scrape_artifacts'" --json
-npx -y @insforge/cli db query "select conname, pg_get_constraintdef(oid) from pg_constraint where conrelid='public.scrape_artifacts'::regclass" --json
+- [ ] **Step 7: Record the pre-migration identity set**
+
+```python
+import json, re, pathlib
+
+text = pathlib.Path("backup/pre-migration-full.sql").read_text(encoding="utf-8", errors="replace")
+m = re.search(r"^COPY auth\.users\s*\(([^)]*)\)\s*FROM stdin;\s*\n(.*?)^\\\.\s*$", text, re.M | re.S)
+cols = m.group(1).split(",") if m else []
+rows = [l.split("\t") for l in m.group(2).split("\n") if l.strip()] if m else []
+
+out = {
+    "count": len(rows),
+    "columns": [c.strip() for c in cols],
+    "users": [
+        {"id": r[cols.index("id")].strip(),
+         "email_domain": r[cols.index("email")].strip().split("@")[-1],
+         "created_at": r[cols.index("created_at")].strip()}
+        for r in rows if "id" in cols and "email" in cols
+    ],
+}
+pathlib.Path("backup/identity-reference.json").write_text(json.dumps(out, indent=2))
+print(json.dumps(out, indent=2))
 ```
 
-Write the result to `backup/scrape-artifacts-ddl.sql`.
+Store only the email **domain**, never the local part. This file exists to let
+Task 8.1 re-link the two pre-migration users to their new Better Auth ids; a
+full email address is not needed for that and does not belong in a file that a
+human might paste into an issue.
 
-- [ ] **Step 7: Inventory object storage — it is not in the database export**
+Expected: `count` is **2**.
 
-```bash
-npx -y @insforge/cli storage list-objects screenshots --limit 1000 --json > backup/screenshots-inventory.json
+- [ ] **Step 8: Confirm the screenshot question is settled**
+
+```python
+import re, pathlib
+text = pathlib.Path("backup/pre-migration-full.sql").read_text(encoding="utf-8", errors="replace")
+m = re.search(r"^COPY storage\.objects\s*\([^)]*\)", text, re.M | re.S)
+print("columns:", " ".join(m.group(0).split()) if m else "none")
 ```
 
-Expected: a list of objects. Record the count in `backup/row-counts-before.txt`. This inventory is the only record of which screenshots exist, and it drives the Phase 8 decision.
+Expected columns: `bucket, key, size, mime_type, uploaded_at, uploaded_by,
+uploaded_via, s3_access_key_id, etag` — **no `bytea` or content column**, so
+screenshot bytes were never in the SQL dump. Combine with a row count of **0**
+to conclude there are no screenshots to import.
 
-- [ ] **Step 8: Confirm the export before proceeding**
+`storage.objects` holding zero rows is the finding that settles Task 8.1
+Step 4: there is no screenshot history to preserve and no `screenshot_desktop_url`
+value that can resolve. Record the conclusion in `backup/row-counts-before.json`
+under a `screenshots` key so Task 8.1 reads the decision rather than re-deriving
+it.
 
-```bash
-Select-String -Path backup/pre-migration-full.sql -Pattern "generation_jobs|user_entitlements|payment_transactions" | Measure-Object | Select-Object -ExpandProperty Count
+- [ ] **Step 9: Verify the platform schemas that will be discarded**
+
+```python
+import re, pathlib
+text = pathlib.Path("backup/pre-migration-full.sql").read_text(encoding="utf-8", errors="replace")
+print(sorted({m for m in re.findall(r"CREATE TABLE (?:IF NOT EXISTS )?(\w+)\.", text)}))
 ```
 
-Expected: a non-zero count, proving the core business tables are present. If any of the three is absent, stop and re-export.
+Expected: `auth`, `compute`, `deployments`, `email`, `functions`, `memory`,
+`payments`, `realtime`, `schedules`, `storage`, `system`. These are InsForge
+platform schemas and are **not** migrated. Only the `public` schema's 11
+application tables carry forward.
 
-- [ ] **Step 9: Commit the gitignore change only**
+`auth.uid()` is defined in the dump as
+`SELECT nullif(auth.jwt() ->> 'sub', '')::uuid`, and depends on `auth.jwt()`.
+This is why spec §5.4 drops RLS rather than reimplementing `auth.uid()` locally
+— it would require reimplementing JWT verification too.
+
+- [ ] **Step 10: Commit the gitignore change only**
 
 ```bash
 git add .gitignore
 git commit -m "chore: gitignore backup dumps and local screenshot storage"
 ```
 
-Do not commit anything under `backup/`.
+Do not commit anything under `backup/`. Do not run any InsForge command — the
+project is paused and this task deliberately avoids touching it.
 
-**Done when:** `backup/pre-migration-full.sql` exists and contains 10 functions and all 11 tables; `backup/scrape-artifacts-ddl.sql` contains a complete `create table` plus its indexes and constraints; `backup/row-counts-before.json` lists 11 tables; `backup/screenshots-inventory.json` exists.
+**Done when:** `backup/pre-migration-full.sql` is 1,731,529 bytes; 11 `public.*`
+tables and 11 `public.*` functions are confirmed; `backup/row-counts-before.json`
+holds the 11 counts totalling 2191; `backup/scrape-artifacts-ddl.sql` holds the
+extracted `create table` with its primary key, foreign key and index; `backup/identity-reference.json` records 2 users with email domains only; the screenshot question is recorded as settled with zero objects; and the gitignore change is committed with nothing else staged.
 
 ### Task 0.2: Install the target dependency set
 
