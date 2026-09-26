@@ -73,7 +73,7 @@ src/storage/
   screenshots.ts                      Filesystem read/write, key layout preserved
 scripts/                              Legacy scrape scripts; audited in Task 3.1
 var/screenshots/                      Screenshot root, gitignored
-migrations/                           Cleaned baseline (replaces the 12 InsForge-era files)
+migrations/                           Cleaned baseline (replaces the 13 InsForge-era files)
 ```
 
 ### Modified
@@ -602,11 +602,11 @@ Credentials live only in the gitignored `.env.local`. There is no tracked file t
 - Create: `migrations/0006_user_id_columns.sql` (from `20260710140400_add-user-id-to-child-tables.sql`, RLS stripped)
 - Create: `migrations/0007_rpc_hardening.sql` (from `20260710153000` and `20260710154500`, role grants stripped)
 - Create: `migrations/0008_history_delete.sql` (from `20260712100000_fix-history-delete.sql`, grants stripped)
-- Delete: the 12 original `migrations/2026*.sql` files
+- Delete: the 13 original `migrations/2026*.sql` files
 - Create: `migrations/RULES.md` — what was removed and why
 
 **Interfaces:**
-- Consumes: the 12 original migration files, `backup/scrape-artifacts-ddl.sql`
+- Consumes: the 13 original migration files, `backup/scrape-artifacts-ddl.sql`
 - Produces: an ordered `migrations/0001..0008.sql` baseline applying cleanly to an empty database, with `migrations/RULES.md` documenting the transformation
 
 - [ ] **Step 1: Write the transformation rules document before touching SQL**
@@ -616,7 +616,7 @@ Credentials live only in the gitignored `.env.local`. There is no tracked file t
 ```markdown
 # Cleaned migration baseline
 
-Derived from the 12 InsForge-era migration files. The originals remain in git
+Derived from the 13 InsForge-era migration files. The originals remain in git
 history. This baseline exists because those files depend on InsForge
 infrastructure that a stock PostgreSQL instance does not provide.
 
@@ -1088,44 +1088,77 @@ Expected: 4 tables created. Verify:
 
 Expected: `uuid`. If it is `text`, `generateId` was not applied and every `user_id uuid` foreign-key relationship will break.
 
-- [ ] **Step 9: Re-add the two deferred user foreign keys**
+- [ ] **Step 9: Re-add the nine deferred user foreign keys**
 
-Task 1.2 dropped `generation_jobs_user_id_fkey` and
-`scrape_artifacts_user_id_fkey` because `public.users` did not exist when the
-baseline was written. Now it does. Create `migrations/0011_user_fks.sql`:
+Task 1.2 dropped **nine** `references auth.users(id)` foreign keys, because
+`public.users` did not exist when the baseline was written. Now it does. Eight of
+the nine were inline column constraints; only `scrape_artifacts` had a named
+constraint. All nine are recreated here.
+
+Create `migrations/0011_user_fks.sql`:
 
 ```sql
--- Re-adds the two foreign keys that the cleaned baseline (Task 1.2) had to
+-- Re-adds the nine foreign keys that the cleaned baseline (Task 1.2) had to
 -- drop, because public.users did not exist when the baseline was written.
 -- public.users is Better Auth's user table, created in this task. See spec 5.3.
-
+--
+-- Six were `alter table ... add column user_id uuid references auth.users(id)`.
 alter table public.generation_jobs
   add constraint generation_jobs_user_id_fkey
-  foreign key (user_id) references public.users(id) on delete cascade;
+  foreign key (user_id) references public.users(id);
 
+alter table public.crawled_pages
+  add constraint crawled_pages_user_id_fkey
+  foreign key (user_id) references public.users(id);
+
+alter table public.design_extractions
+  add constraint design_extractions_user_id_fkey
+  foreign key (user_id) references public.users(id);
+
+alter table public.extracted_assets
+  add constraint extracted_assets_user_id_fkey
+  foreign key (user_id) references public.users(id);
+
+alter table public.generated_documents
+  add constraint generated_documents_user_id_fkey
+  foreign key (user_id) references public.users(id);
+
+alter table public.job_logs
+  add constraint job_logs_user_id_fkey
+  foreign key (user_id) references public.users(id);
+
+-- Two were inline in their `create table`, not named constraints.
+alter table public.user_entitlements
+  add constraint user_entitlements_user_id_fkey
+  foreign key (user_id) references public.users(id);
+
+alter table public.payment_transactions
+  add constraint payment_transactions_user_id_fkey
+  foreign key (user_id) references public.users(id);
+
+-- One was a named constraint on the table recovered from the production dump.
+-- This is the ONLY one of the nine that had ON DELETE CASCADE, and the only one
+-- that must keep it.
 alter table public.scrape_artifacts
   add constraint scrape_artifacts_user_id_fkey
   foreign key (user_id) references public.users(id) on delete cascade;
 ```
 
-`ON DELETE CASCADE` is preserved from the original InsForge definitions, so
-deleting a user still cascades to their jobs and scrapes.
+`ON DELETE CASCADE` belongs on `scrape_artifacts` alone. The other eight had no
+cascade clause in the originals, and adding one would silently change delete
+behaviour for jobs, documents, entitlements and payment records. Do not
+generalise it.
 
-Check the baseline's other `user_id` columns too — `crawled_pages`,
-`design_extractions`, `generated_documents`, and others gained a `user_id` in
-migration `0006` — and add a foreign key for each of those that had one
-originally. Compare against the constraints recorded in
-`backup/scrape-artifacts-ddl.sql` and the original migration files rather than
-assuming which ones existed.
-
-Apply and verify:
+Apply and verify all nine:
 
 ```bash
 & "C:\Program Files\PostgreSQL\17\bin\psql.exe" -U docrivo -d docrivo -w -v ON_ERROR_STOP=1 -f migrations/0011_user_fks.sql
-& "C:\Program Files\PostgreSQL\17\bin\psql.exe" -U docrivo -d docrivo -w -t -A -c "select conrelid::regclass, conname from pg_constraint where contype='f' and conname like '%user_id%' order by 1;"
+& "C:\Program Files\PostgreSQL\17\bin\psql.exe" -U docrivo -d docrivo -w -t -A -c "select count(*) from pg_constraint where contype='f' and confrelid = 'public.users'::regclass;"
 ```
 
-Expected: at least the two named constraints, each pointing at `users`.
+Expected: `9`. A lower count means a constraint was missed, and a missed one
+fails silently, so check the number rather than assuming the file applied.
+
 
 - [ ] **Step 10: Generate the secret and add env vars**
 

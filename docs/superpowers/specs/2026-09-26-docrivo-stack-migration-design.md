@@ -192,9 +192,9 @@ This is the largest actual throughput constraint in the system. It is not caused
 
 ### F4 — `scrape_artifacts` is never created (correctness, blocking)
 
-Ten tables are created across the 12 migration files. `scrape_artifacts` has **zero** `create table` statements but appears 17 times across 3 migrations — RLS policies, indexes, and grants. It was evidently created out of band between migrations.
+Ten tables are created across the 13 migration files. `scrape_artifacts` has **zero** `create table` statements but appears on 18 lines across 3 of them — RLS policies, indexes, and grants. It was evidently created out of band between migrations. A 13th file, `20260706070500_rls-and-fk-indexes.sql`, consists purely of `enable`/`force row level security` and is easy to overlook when mapping the set.
 
-Consequence: applying the 12 migrations to an empty database **fails** at `20260710132820_fix-rls-ownership-policies.sql`, which creates policies on a non-existent table.
+Consequence: applying the 13 migrations to an empty database **fails** at `20260710132820_fix-rls-ownership-policies.sql`, which creates policies on a non-existent table.
 
 **Remediation (Phase 0 and 1):** recover the authoritative definition from the live InsForge database, and add a migration that creates the table, positioned before the three migrations that reference it.
 
@@ -270,7 +270,7 @@ All of it is deleted. Drizzle issues the same operations as ordinary SQL in unde
 
 The 8 RPC functions remain, called through Drizzle's `sql` template rather than HTTP: `claim_next_job`, `consume_quota`, `get_user_entitlement`, `hit_rate_limit`, `list_plans`, `refund_quota`, `retry_generation_job`, `sync_user_id_from_job`. None are reimplemented; all are carried over as-is.
 
-This count is verified three ways: the repository's 12 migration files define exactly these 8, the production backup dump defines exactly these 8, and the two sets are identical. An earlier draft of this spec claimed 10; that figure was wrong and is corrected here.
+This count is verified three ways: the repository's 13 migration files define exactly these 8, the production backup dump defines exactly these 8, and the two sets are identical. An earlier draft of this spec claimed 10; that figure was wrong and is corrected here.
 
 ### 4.3 Polling replacement
 
@@ -335,7 +335,7 @@ src/
     render-page.ts               ← UNCHANGED
     url-validator.ts             ← UNCHANGED
 worker/index.ts                  ← stays at repo root, separate from the web app
-migrations/                      ← 12 existing SQL files + 1 new (scrape_artifacts)
+migrations/                      ← 13 existing SQL files, replaced by an 8-file cleaned baseline
 var/screenshots/                 ← local storage root, gitignored
 ```
 
