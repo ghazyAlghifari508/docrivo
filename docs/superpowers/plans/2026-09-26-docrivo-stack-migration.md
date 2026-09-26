@@ -30,7 +30,7 @@ These apply to every task. Do not deviate without amending the spec first.
 - **Preserve the atomic payment claim** — a `status = 'pending'`-scoped UPDATE preventing double credit reset.
 - **The worker stays a separate process.** Never merge it into the web server.
 - **Do not use `next/headers` or any `next/*` import.** In TanStack Start, read headers from the request object.
-- **Connection string:** `postgres://docrivo@localhost:5432/docrivo` for dev, `.../docrivo_test` for tests. Credentials in `.env.local`, which is gitignored.
+- **Connection string shape:** `postgres://docrivo@localhost:5432/docrivo` for dev, `.../docrivo_test` for tests. The literal values live in `.env.local`, which is gitignored. Anywhere this plan shows a connection string, the password is a placeholder — never copy a placeholder into a real config.
 
 ---
 
@@ -500,6 +500,24 @@ $env:PGPASSWORD=$PW
 ```
 
 Expected: `docrivo|docrivo`. Clear the variable afterwards with `Remove-Item Env:\PGPASSWORD`.
+
+**This does not verify the password.** `pg_hba.conf` is `trust` for local
+connections, so a connection succeeds whether or not the password is correct. To
+verify the password actually stored, read the SCRAM verifier and recompute it:
+
+```bash
+& "C:\Program Files\PostgreSQL\17\bin\psql.exe" -U postgres -d postgres -w -t -A -c "select rolpassword from pg_authid where rolname='docrivo';"
+```
+
+The value is a SCRAM-SHA-256 verifier of the form
+`SCRAM-SHA-256$<iterations>:<salt-b64>$<storedkey-b64>:<serverkey-b64>`. Deriving
+it from `$PW` means: PBKDF2-HMAC-SHA256 over the password using the stored salt
+and iteration count to get a Client Key, then HMAC-SHA256 of that with the stored
+key to get the Stored Key, then base64 and compare against the stored value.
+`True` means the password matches.
+
+If `rolpassword` is null the role has no password set, and `ALTER ROLE docrivo
+PASSWORD` is required before any future switch to `scram-sha-256`.
 
 - [ ] **Step 4: Record what the `docrivo` role can and cannot reach**
 
