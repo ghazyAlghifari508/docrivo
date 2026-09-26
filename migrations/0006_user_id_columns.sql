@@ -30,7 +30,7 @@ begin
       and column_name = 'user_id'
   ) then
     alter table public.generation_jobs add column user_id uuid;
-    create index on public.generation_jobs (user_id);
+    create index idx_generation_jobs_user_id on public.generation_jobs(user_id);
   end if;
 end $$;
 
