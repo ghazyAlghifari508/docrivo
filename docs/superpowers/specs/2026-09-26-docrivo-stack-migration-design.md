@@ -29,11 +29,11 @@ Four stated motivations, all of which this design serves:
 
 ### Success criteria
 
-- No `@insforge/sdk`, `insforge`, or `apify` references remain in `src/` or `worker/`.
-- All 15 pages and 12 HTTP endpoints reach behavioural parity with the Next.js implementation.
+- **No trace of the previous stack.** `package.json`, `node_modules`, configuration, and source contain no Next.js, no InsForge, and no Apify. Verified by the checks in §2.5, not by inspection.
+- All 15 pages and 12 HTTP endpoints reach behavioural parity with the Next.js implementation, and the suite in §9.2 passes.
 - Google sign-in works end-to-end against local PostgreSQL.
-- All 12 existing SQL migrations apply cleanly to an empty database.
-- The Apify code path is deleted; Playwright is the only crawler.
+- All 12 existing SQL migrations plus the new `scrape_artifacts` migration apply cleanly to an empty database.
+- Playwright is the only crawler; the environment-dependent `capture_mode` value no longer exists.
 - The three known performance defects (F1, F2, F3 in §3) are resolved.
 
 ---
@@ -85,6 +85,84 @@ Playwright is Apache 2.0, copyright Microsoft and Google. Commercial use is perm
 Two obligations: retain the Apache license and NOTICE if redistributing Playwright, and do not use the Playwright name in a way that implies Microsoft endorsement.
 
 Locally this is unambiguous. It remains unambiguous when deployed to a VPS. The separate paid product, Microsoft Playwright Testing on Azure, is not used and not needed.
+
+### 2.4 Verified version matrix
+
+All versions verified against the npm registry on **2026-09-26**, with peer-dependency compatibility checked rather than assumed.
+
+| Package | Version | Change from current | Notes |
+|---|---|---|---|
+| `@tanstack/react-start` | **1.168.58** | new | Requires `node >=22.12.0`, `vite >=7` |
+| `@tanstack/react-router` | **1.170.39** | new | Pinned **exactly** by Start — do not install separately with a caret range |
+| `@tanstack/react-query` | **5.104.0** | new | |
+| `drizzle-orm` | **0.45.3** | new | Better Auth requires `^0.45.2` — satisfied |
+| `drizzle-kit` | **0.31.11** | new | Better Auth requires `>=0.31.4` — satisfied |
+| `postgres` | **3.4.9** | new | Drizzle peer requires `>=3` — satisfied |
+| `better-auth` | **1.7.6** | new | |
+| `react` / `react-dom` | **19.3.0** | from 19.2.4 | Start peer allows `>=19` |
+| `zod` | **4.6.5** | from 4.4.3 | Implements Standard Schema |
+| `playwright` | **1.63.0** | from 1.61.1 | |
+| `tailwindcss` | **4.3.3** | from 4.x | |
+| `@tailwindcss/vite` | **4.3.3** | new | Replaces `@tailwindcss/postcss`, which was Next-specific |
+| `vite` | **8.3.1** | new | Start peer `>=7`; Vitest peer `^8` |
+| `vitest` | **5.0.2** | from 4.1.9 | Requires `node ^22.12 \|\| ^24 \|\| >=26` |
+| `@types/node` | **^24** | from ^20.19.43 | **Required change.** Vitest 5 peer needs `^22 \|\| >=24`; `^20` is incompatible. Tracks the local Node 24 runtime |
+| `tsx` | **4.23.15** | from 4.23.0 | Worker runner |
+| `typescript` | **5.9.3** | from 5.x | **Deliberate deviation from latest — see below** |
+
+Local runtime satisfies every engine constraint: **Node v24.20.0**, npm 12.0.2.
+
+#### TypeScript 5.9.3 instead of 7.0.2
+
+TypeScript `latest` on npm is **7.0.2**, the native Go compiler. This spec pins **5.9.3** instead, and the deviation is deliberate.
+
+The reason for choosing TanStack Start over React Router 7 was, in part, its end-to-end type safety — the compiler is load-bearing for that value, not incidental. TanStack Router's route and search-param inference is among the most type-intensive patterns in the React ecosystem. Adopting a from-scratch compiler implementation in the same change would put the framework's primary advantage at risk for a build-speed benefit that was never a goal of this migration.
+
+TS 7.0.2 is a real published release, not a prerelease, so this is a risk judgement rather than a stability constraint. The pin is a single line in `package.json` and can be revisited once the stack is proven.
+
+#### Pinning policy
+
+TanStack Start declares `@tanstack/react-router` as an **exact** dependency (`1.170.39`, no caret), and its internal `@tanstack/*` packages sit at differing versions (Start 1.168.58 wraps start-client-core 1.170.32 and start-plugin-core 1.171.47). Caret ranges on TanStack packages risk npm hoisting a Router that does not match what Start expects.
+
+All TanStack packages are therefore pinned to **exact versions**. Other packages may use caret ranges.
+
+### 2.5 Branch strategy and the zero-trace requirement
+
+**Branch:** `feat/tanstack-start-drizzle`, branched from `dev` at commit `7e5e165`. History is preserved and `dev` remains the record of the Next.js implementation.
+
+**Requirement:** the finished branch contains no trace of Next.js or the previous stack — not in `package.json`, not in `node_modules`, not in configuration, not in source.
+
+This is achieved by **stripping before building**, not by porting in place. The first work commit on the branch deletes the entire Next.js application while preserving only the files that carry over. The new stack is then built on that stripped base, so it is never constructed on top of Next.js.
+
+Files deleted in the strip commit:
+
+`src/app/` (all 15 pages, 12 route handlers, layout, globals.css entry) · `src/components/` (17 components — re-added, unchanged, after the strip) · `src/proxy.ts` · `next.config.ts` · `eslint-config-next` and the ESLint configuration · `server-only` · `next` and `next-rsc-*` if present
+
+Files preserved across the strip:
+
+`src/lib/ai-provider.ts` · `src/lib/preview-html.ts` · `src/lib/render-page.ts` · `src/lib/fetch-html.ts` · `src/lib/url-validator.ts` · their five test files · `migrations/` · `docs/` · `insforge.toml` is **deleted** (InsForge configuration has no place in the new stack)
+
+Per-file `import "server-only"` usage must be audited during the strip: the guard is meaningless outside Next and each retained module either drops it or the dependency is kept for an unrelated reason.
+
+#### Enforcement
+
+The zero-trace requirement is verified, not assumed. These checks gate the final phase:
+
+```bash
+# no Next.js in the dependency tree
+npm ls next next-rsc 2>&1 | grep -E "next" && exit 1
+
+# no Next.js imports or config references in source
+rg -n "from ['\"]next|next/|next.config|use server|use client.*next" src/ worker/ && exit 1
+
+# no Next.js-only config files remain
+ls next.config.* eslint.config.* 2>/dev/null | xargs rg -l "next" && exit 1
+
+# no build output from the old toolchain
+ls .next && exit 1
+```
+
+Better Auth declares `next` as an **optional** peer dependency, so npm does not install it. No other package in the stack declares `next` as a peer. The checks above are expected to pass trivially once the strip commit lands; they exist to catch regressions, chiefly a stray `next` entering transitively.
 
 ---
 
@@ -503,11 +581,13 @@ Configure Better Auth with the Drizzle adapter and the Google provider. Generate
 
 Done when: Google sign-in works end to end on `localhost`.
 
-### Phase 3 — Skeleton and pages
+### Phase 3 — Strip, then build
 
-Create the TanStack Start project structure **alongside** the existing Next.js application, so both remain runnable during the migration. The end state is replacement: `src/app/` is deleted in Phase 6, leaving `src/routes/` as the only application tree. Port all 15 pages. Move the 17 components without modification. Preserve `lang="id"`, fonts, and the Tailwind v4 setup including the `@theme` block in `globals.css`.
+**Step 1 — strip.** Delete the Next.js application as listed in §2.5, preserving only the carried-over files. This is a single self-contained commit, after which the branch contains no Next.js. `globals.css` is preserved rather than deleted, since its `@theme` block and design tokens carry into the new root route; only its Next-specific parts are edited.
 
-Done when: every route renders correctly with styling and i18n intact, verified in both trees.
+**Step 2 — build.** Stand up the TanStack Start project structure on the stripped base. Port all 15 pages. Re-add the 17 components without modification. Port the `lang="id"` attribute, fonts, and the Tailwind v4 setup, switching from `@tailwindcss/postcss` to `@tailwindcss/vite`.
+
+Done when: every route renders correctly with styling and i18n intact, and the zero-trace checks in §2.5 pass.
 
 ### Phase 4 — Server functions
 
@@ -523,9 +603,9 @@ Done when: no component manages an `AbortController` or a manual polling interva
 
 ### Phase 6 — InsForge removal
 
-Delete the Apify branch and the `!process.env.VERCEL` conditional. Delete the InsForge OAuth callback and refresh routes, `src/proxy.ts`, and all remaining InsForge SDK imports. Replace the filesystem write for screenshots. Rewrite the README to match reality (F7).
+Delete the Apify branch and the `!process.env.VERCEL` conditional. Delete the InsForge OAuth callback and refresh routes and all remaining InsForge SDK imports. Delete `insforge.toml`. Replace the filesystem write for screenshots. Rewrite the README to match reality (F7).
 
-Done when: `rg "insforge|apify"` returns nothing in `src/` and `worker/`.
+Done when: `rg "insforge|apify"` returns nothing in `src/` and `worker/`, and the zero-trace checks in §2.5 pass.
 
 ### Phase 7 — Performance defects
 
@@ -573,6 +653,10 @@ Recorded so these are not re-litigated:
 | Chromium memory pressure on the local machine | Medium | The previous production target was a 512 MB Fly microVM, which is why the worker reuses a single browser context and carries memory-tuning comments. On the local machine the headroom is larger but unmeasured. Concurrency in Phase 7 is bounded by measured available memory, not a fixed guess. |
 | Deleting the Apify path removes a production fallback | Low | The fallback existed because Playwright fails in Vercel lambdas. There is no Vercel in the target architecture. |
 | `trust` auth in `pg_hba.conf` exposes all eight databases | Low | Application uses the non-superuser `docrivo` role. Tightening to `scram-sha-256` recorded as a follow-up (§5.2). |
+| A Next.js remnant survives into the new stack | Medium | Strip-before-build ordering (§2.5, Phase 3) plus the four zero-trace checks, run as a gate on Phases 3 and 6 rather than a final manual review. |
+| TanStack version skew from exact internal pinning | Low | TanStack packages pinned exactly (§2.4). Start's own internals span 1.167 through 1.171; caret ranges would let npm hoist a mismatched Router. |
+| A carried-over module depends on Next-only behaviour | Low | The five preserved modules are pure logic. `import "server-only"` usage is audited per file during the strip (§2.5). |
+| TypeScript 5.9.3 lags `latest` | Low | Deliberate, see §2.4. Single-line change, reversible once the stack is proven. |
 
 ---
 
@@ -585,4 +669,7 @@ These require decisions or external input before implementation begins:
 3. **Google OAuth credentials.** Requires a Google Cloud Console client ID and secret, plus a redirect URI decision for the final host.
 4. **`BETTER_AUTH_SECRET` generation** and `.env.local` variable inventory for the new stack.
 5. **Historical screenshot disposition at cutover.** Import from InsForge storage, or accept the loss of historical `screenshot_desktop_url` targets.
-6. **Source tree layout.** Whether the migration happens in place, or in a parallel directory that replaces the repository once parity is proven. In-place is assumed by Phases 3 through 6; the decision affects only how the final swap is performed.
+
+Resolved during planning:
+
+6. ~~**Source tree layout.**~~ Resolved by §2.5: strip-before-build in place on branch `feat/tanstack-start-drizzle`. The new stack is never constructed on top of Next.js.
