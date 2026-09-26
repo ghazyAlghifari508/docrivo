@@ -953,12 +953,26 @@ describe("local schema", () => {
 import { drizzle } from "drizzle-orm/postgres-js"
 import postgres from "postgres"
 
-const url = process.env.DATABASE_URL_TEST ?? process.env.DATABASE_URL
-if (!url) throw new Error("DATABASE_URL or DATABASE_URL_TEST is required")
+// The application client reads DATABASE_URL. It must NEVER fall back to
+// DATABASE_URL_TEST: `.env.local` defines both, so a test-first resolution
+// points the running application at `docrivo_test`.
+const url = process.env.DATABASE_URL
+if (!url) throw new Error("DATABASE_URL is required")
 
 export const sql = postgres(url, { max: 5 })
 export const db = drizzle(sql, { schema: {} })
+
+// A separate client for the test suite, so tests can target `docrivo_test`
+// without the application ever resolving to it by accident.
+const testUrl = process.env.DATABASE_URL_TEST
+export const testSql = testUrl ? postgres(testUrl, { max: 5 }) : null
+export const testDb = testUrl ? drizzle(testSql!, { schema: {} }) : null
 ```
+
+Two exports, one per target. `db` is what the application uses; `testDb` is what
+the tests use. A test file that needs `testDb` should fail loudly when
+`DATABASE_URL_TEST` is unset rather than silently falling back to the
+development database.
 
 Run:
 
@@ -982,6 +996,25 @@ export default defineConfig({
   },
 })
 ```
+
+**`migrations/` is the only applied history. `./drizzle` must never be
+migrated.** The baseline in `migrations/` was applied by hand with `psql`, so
+Drizzle Kit has no journal for it and knows nothing about those 8 files. A
+`drizzle-kit migrate` or `drizzle-kit push` would try to create all 11 tables
+that already exist.
+
+`./drizzle` therefore gets a `.gitignore` entry of its own, and the generated
+output directory is a review artifact, not a migration source. Add to
+`.gitignore`:
+
+```
+/drizzle/
+```
+
+`drizzle-kit generate` is still useful — it is how you *author* a new migration
+from a schema change. `drizzle-kit migrate` and `drizzle-kit push` are not, until
+a deliberate decision is made about adopting Drizzle Kit as the migration tool
+in place of hand-applied `psql`. That decision is out of scope here.
 
 - [ ] **Step 4: Write the application schema**
 
@@ -1251,6 +1284,26 @@ Apply and verify all nine:
 
 Expected: `9`. A lower count means a constraint was missed, and a missed one
 fails silently, so check the number rather than assuming the file applied.
+
+Then add those nine constraints to `src/db/schema.ts` so the Drizzle schema and
+the database agree. **Name each one explicitly.** Drizzle's `foreignKey({ ... })`
+helper generates a name like `<table>_<column>_fk`, which does not match the
+`<table>_<column>_fkey` convention the baseline uses — so without an explicit
+`name`, `drizzle-kit generate` will emit `DROP CONSTRAINT generation_jobs_user_id_fkey`
+against a constraint it believes is called `generation_jobs_user_id_fkey_fk`.
+
+```ts
+foreignKey({
+  name: "generation_jobs_user_id_fkey",
+  columns: [table.userId],
+  foreignColumns: [users.id],
+})
+```
+
+The same applies to the two `unique()` constraints: Drizzle emits a `_unique`
+suffix where the baseline uses `_key`, as in
+`payment_transactions_order_id_key`. Give those an explicit name too, or
+`drizzle-kit generate` will keep proposing the same spurious drop-and-recreate.
 
 
 - [ ] **Step 10: Generate the secret and add env vars**
