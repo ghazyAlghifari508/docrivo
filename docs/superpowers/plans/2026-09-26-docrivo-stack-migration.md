@@ -1477,15 +1477,8 @@ Expected: PASS.
 
 Carry the value forward from the existing `.env.local`. Do not commit it.
 
-- [ ] **Step 7: Commit**
-
-```bash
-git add src/auth/
-git commit -m "feat(auth): add session middleware and admin email allowlist"
-```
-
 **`requireAdmin`** is specified in this task's Interfaces block and must be
-implemented here, not deferred. It throws `notFound()` — not a 403 — when the
+implemented here, not deferred. It rejects with a not-found — not a 403 — when the
 session is absent or the email is not in the allowlist, matching the
 deliberate 404-not-403 rule from spec §8.2 so the existence of the route is not
 disclosed:
@@ -1495,16 +1488,65 @@ import { notFound } from "@tanstack/react-router"
 import { isAdminEmail } from "./admin"
 
 export function requireAdmin(sessionUser: { email: string } | null): void {
-  if (!sessionUser) notFound()
-  if (!isAdminEmail(sessionUser.email)) notFound()
+  if (!sessionUser) throw notFound()
+  if (!isAdminEmail(sessionUser.email)) throw notFound()
 }
 ```
+
+**`throw notFound()` — the `throw` is load-bearing.** In TanStack Router
+`notFound()` *returns*:
+
+```js
+function notFound(options = {}) {
+  options.isNotFound = true
+  if (options.throw) throw options
+  return options
+}
+```
+
+A bare `notFound()` as the body of an `if` is a no-op that falls through and
+**admits every visitor to `/admin`**. This came from porting `src/lib/dal.ts`,
+where bare `notFound()` *is* correct because Next.js's `notFound()` throws. The
+semantics changed with the framework; the ported code did not.
+
+The test must assert **rejection**, not merely the absence of a throw — a test
+that only checks "does not throw" passes on the broken version:
+
+```ts
+import { describe, expect, it } from "vitest"
+import { requireAdmin } from "./admin"
+
+describe("requireAdmin", () => {
+  it("rejects a null session", () => {
+    expect(() => requireAdmin(null)).toThrow()
+  })
+
+  it("rejects an email outside the allowlist", () => {
+    expect(() => requireAdmin({ email: "nobody@example.net" })).toThrow()
+  })
+
+  it("admits an allowlisted email", () => {
+    expect(() => requireAdmin({ email: "admin@example.com" })).not.toThrow()
+  })
+})
+```
+
+Use a non-credential fixture address, as `middleware.test.ts` already does.
 
 `authMiddleware` is **not** yet registered against any `createStart` instance —
 no `src/start.ts` exists. That registration is Task 3.2's job, and the plan
 there must include it or the middleware never runs.
 
 **`Done when:** the middleware test passes, an unauthenticated request resolves to `null`, `requireAdmin` is exported and tested, and `ADMIN_EMAILS` is read from the environment.
+
+**Done when:** the middleware test passes, an unauthenticated request resolves to `null` rather than throwing, `requireAdmin` is exported and has a test asserting it **rejects** rather than merely not throwing, and `ADMIN_EMAILS` is read from the environment and is **non-empty** — an empty value fails closed, which is safe, but it makes `/admin` unreachable for everyone, so it ships broken.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add src/auth/
+git commit -m "feat(auth): add session middleware and admin email allowlist"
+```
 
 ### Task 2.3: Port the open-redirect guard
 
@@ -1780,6 +1822,36 @@ Expected: 5 test files, 23 tests passing, and **no** `configLoader` or
 module-format warning in the output. If the warning persists under either
 option, resolve it before continuing — do not carry it forward.
 
+**Whichever option you choose, flip the Vitest alias in the same step.**
+`tsconfig.json` moves from `@/*` to `~/*` here, but `vitest.config.ts` hardcodes
+its own `resolve.alias` for `@` — Vite does not read tsconfig `paths`. Left
+alone the two diverge, and the last `@/db` imports in `src/auth/server.ts` stop
+resolving under Vitest. That is a runtime failure, not a typecheck failure.
+
+Prefer deriving the alias from `tsconfig.json` over keeping a second copy:
+
+```ts
+// vitest.config.ts
+import { fileURLToPath } from "node:url"
+
+export default defineConfig({
+  resolve: {
+    alias: {
+      "~": fileURLToPath(new URL("./src", import.meta.url)),
+    },
+  },
+  test: { /* ... unchanged ... */ },
+})
+```
+
+Then convert any remaining `@/` imports:
+
+```bash
+rg -n "from ['\"]@/" src/
+```
+
+Expected: no output.
+
 - [ ] **Step 4: Create `src/start.ts` and register the middleware**
 
 Without this the entire auth layer is dead. `authMiddleware` exists but nothing
@@ -1793,7 +1865,10 @@ import { createStart } from "@tanstack/react-start"
 import { authMiddleware } from "~/auth/middleware"
 
 export const createStartInstance = createStart(() => ({
-  requestMiddleware: [authMiddleware],
+  // `functionMiddleware`, not `requestMiddleware`. The latter is typed as
+  // `ReadonlyArray<AnyRequestMiddleware>` and a request middleware has
+  // `type: "request"`, while `authMiddleware` is `type: "function"`.
+  functionMiddleware: [authMiddleware],
 }))
 ```
 
