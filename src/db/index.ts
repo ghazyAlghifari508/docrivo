@@ -2,6 +2,7 @@ import { config } from "dotenv"
 import { drizzle } from "drizzle-orm/postgres-js"
 import postgres from "postgres"
 import * as schema from "./schema"
+import * as authSchema from "./schema-auth"
 
 config({ path: [".env.local", ".env"], quiet: true })
 
@@ -11,13 +12,20 @@ config({ path: [".env.local", ".env"], quiet: true })
 const url = process.env.DATABASE_URL
 if (!url) throw new Error("DATABASE_URL is required")
 
-export { schema }
+// Better Auth's four tables join the application's so the adapter can resolve
+// them by name. `schema` stays exported as the application tables alone:
+// `schema.test.ts` asserts that the namespace and the eleven baseline tables
+// match exactly, so folding the auth tables in would fail it. The test client
+// gets the full set, keeping the two databases interchangeable.
+const allTables = { ...schema, ...authSchema }
+
+export { schema, authSchema }
 export const sql = postgres(url, { max: 5 })
-export const db = drizzle(sql, { schema })
+export const db = drizzle(sql, { schema: allTables })
 
 // A separate client for the test suite, so tests target docrivo_test without
 // the application ever resolving to it by accident. Null when unset, so a test
 // that needs it fails loudly rather than silently using the dev database.
 const testUrl = process.env.DATABASE_URL_TEST
 export const testSql = testUrl ? postgres(testUrl, { max: 5 }) : null
-export const testDb = testUrl ? drizzle(testSql!, { schema }) : null
+export const testDb = testSql ? drizzle(testSql, { schema: allTables }) : null

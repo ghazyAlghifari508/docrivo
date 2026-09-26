@@ -5,11 +5,13 @@
  * anything here is a schema change and belongs in a new `migrations/` file, not
  * in this file.
  *
- * Two deliberate gaps, both awaiting Task 2.1:
- *   * the nine `user_id` columns have no foreign key, because `public.users`
- *     does not exist yet — `migrations/0011_user_fks.sql` adds them;
- *   * `src/db/schema-auth.ts` (Better Auth's user/session/account/verification
- *     tables) is not defined here.
+ * One deliberate gap, awaiting a later task: `src/db/schema-auth.ts` (Better
+ * Auth's user/session/account/verification tables) is not defined here. The nine
+ * `user_id` foreign keys that the baseline had to drop are present, added by
+ * `migrations/0011_user_fks.sql`; only two of the nine carry `on delete
+ * cascade`, and that asymmetry is deliberate — read it from the production dump,
+ * not from the InsForge migration files, where six of the nine are inline in
+ * `add column` and the delete rule is invisible.
  *
  * `drizzle-kit generate` reports every index as changed, because a snapshot
  * taken by `drizzle-kit pull` records each index column's operator class and a
@@ -36,6 +38,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core"
+import { users } from "./schema-auth"
 
 const createdAt = () => timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
 
@@ -71,6 +74,11 @@ export const generationJobs = pgTable(
       columns: [t.retryOf],
       foreignColumns: [t.id],
       name: "generation_jobs_retry_of_fkey",
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [t.userId],
+      foreignColumns: [users.id],
+      name: "generation_jobs_user_id_fkey",
     }).onDelete("cascade"),
     // `desc` alone means NULLS FIRST in PostgreSQL; drizzle's default is
     // NULLS LAST, so both orderings below state it.
@@ -109,6 +117,11 @@ export const crawledPages = pgTable(
       foreignColumns: [generationJobs.id],
       name: "crawled_pages_job_id_fkey",
     }).onDelete("cascade"),
+    foreignKey({
+      columns: [t.userId],
+      foreignColumns: [users.id],
+      name: "crawled_pages_user_id_fkey",
+    }),
     index("crawled_pages_job_id_idx").on(t.jobId),
     index("idx_crawled_pages_user_id").on(t.userId),
   ],
@@ -145,6 +158,11 @@ export const extractedAssets = pgTable(
       foreignColumns: [crawledPages.id],
       name: "extracted_assets_page_id_fkey",
     }).onDelete("set null"),
+    foreignKey({
+      columns: [t.userId],
+      foreignColumns: [users.id],
+      name: "extracted_assets_user_id_fkey",
+    }),
     index("extracted_assets_job_id_idx").on(t.jobId),
     index("idx_extracted_assets_page_id").on(t.pageId),
     index("idx_extracted_assets_user_id").on(t.userId),
@@ -175,6 +193,11 @@ export const designExtractions = pgTable(
       foreignColumns: [generationJobs.id],
       name: "design_extractions_job_id_fkey",
     }).onDelete("cascade"),
+    foreignKey({
+      columns: [t.userId],
+      foreignColumns: [users.id],
+      name: "design_extractions_user_id_fkey",
+    }),
     index("design_extractions_job_id_idx").on(t.jobId),
     index("idx_design_extractions_user_id").on(t.userId),
   ],
@@ -200,6 +223,11 @@ export const generatedDocuments = pgTable(
       foreignColumns: [generationJobs.id],
       name: "generated_documents_job_id_fkey",
     }).onDelete("cascade"),
+    foreignKey({
+      columns: [t.userId],
+      foreignColumns: [users.id],
+      name: "generated_documents_user_id_fkey",
+    }),
     index("generated_documents_job_id_idx").on(t.jobId),
     index("idx_generated_documents_user_id").on(t.userId),
   ],
@@ -226,6 +254,11 @@ export const jobLogs = pgTable(
       foreignColumns: [generationJobs.id],
       name: "job_logs_job_id_fkey",
     }).onDelete("cascade"),
+    foreignKey({
+      columns: [t.userId],
+      foreignColumns: [users.id],
+      name: "job_logs_user_id_fkey",
+    }),
     index("job_logs_job_id_created_at_idx").on(t.jobId, t.createdAt),
     index("idx_job_logs_user_id").on(t.userId),
   ],
@@ -261,7 +294,14 @@ export const scrapeArtifacts = pgTable(
       .default(sql`'{}'::jsonb`),
     createdAt: createdAt(),
   },
-  (t) => [index("idx_scrape_artifacts_user_id").on(t.userId, t.createdAt.desc().nullsFirst())],
+  (t) => [
+    foreignKey({
+      columns: [t.userId],
+      foreignColumns: [users.id],
+      name: "scrape_artifacts_user_id_fkey",
+    }).onDelete("cascade"),
+    index("idx_scrape_artifacts_user_id").on(t.userId, t.createdAt.desc().nullsFirst()),
+  ],
 )
 
 /** Plan catalogue, keyed by plan name; there is no surrogate `id`. */
@@ -299,6 +339,11 @@ export const userEntitlements = pgTable(
       foreignColumns: [plans.plan],
       name: "user_entitlements_plan_fkey",
     }),
+    foreignKey({
+      columns: [t.userId],
+      foreignColumns: [users.id],
+      name: "user_entitlements_user_id_fkey",
+    }),
     index("idx_user_entitlements_plan").on(t.plan),
   ],
 )
@@ -324,6 +369,11 @@ export const paymentTransactions = pgTable(
       columns: [t.plan],
       foreignColumns: [plans.plan],
       name: "payment_transactions_plan_fkey",
+    }),
+    foreignKey({
+      columns: [t.userId],
+      foreignColumns: [users.id],
+      name: "payment_transactions_user_id_fkey",
     }),
     unique("payment_transactions_order_id_key").on(t.orderId),
     index("idx_payment_transactions_user_id").on(t.userId),
