@@ -4,9 +4,21 @@ Derived from the 13 InsForge-era migration files. The originals remain in git
 history. This baseline exists because those files depend on InsForge
 infrastructure that a stock PostgreSQL instance does not provide.
 
-Ordered `0001`..`0008`. Applies cleanly to an empty database. The only
-prerequisite is that `public` exists and the applying role may create objects
-in it.
+The **baseline is `0001`..`0008`**, applied in filename order. It applies
+cleanly to an empty database. The only prerequisite is that `public` exists and
+the applying role may create objects in it.
+
+The directory holds more than the baseline. Two later files apply *after* it,
+and neither is part of the Task 1.2 derivation:
+
+| File | Created by | Needs |
+| --- | --- | --- |
+| `0010_function_revoke.sql` | Task 1.3 | the baseline only -- revokes execute on `claim_next_job`, `hit_rate_limit` and `retry_generation_job`, all defined by the baseline |
+| `0011_user_fks.sql` | Task 2.1 | `public.users`, so the four Better Auth tables must exist first |
+
+`0009` is deliberately absent. The plan reserves that number for
+`0009_job_lease.sql` (Task 7.1), so the Task 1.3 revoke migration was numbered
+`0010` to leave the slot free instead of colliding with it. Do not fill the gap.
 
 ## Removed
 
@@ -66,8 +78,11 @@ substitute for `auth.uid()` to write policies against.
   key`, `payment_transactions.user_id` stays `not null`). Only the foreign-key
   constraints are deferred.
 
-  `scrape_artifacts_user_id_fkey` carried `on delete cascade`. Task 2.1 must
-  restore the `on delete cascade` clause, not just the reference.
+  **Two** of the nine carried `on delete cascade`, not one:
+  `generation_jobs_user_id_fkey` and `scrape_artifacts_user_id_fkey` (dump
+  lines 8821 and 8861 of `backup/pre-migration-full.sql`). Task 2.1 restored
+  the `on delete cascade` clause on **both**, not just the reference. The
+  remaining seven carried no delete action and are `NO ACTION`.
 
 ## Preserved verbatim
 

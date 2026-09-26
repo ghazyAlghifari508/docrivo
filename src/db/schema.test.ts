@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 import { getTableName, isTable, SQL, sql } from "drizzle-orm"
 import { getTableConfig, IndexedColumn, type PgTable } from "drizzle-orm/pg-core"
-import { schema, sql as appSql, testDb, testSql } from "./index"
+import { schema, pgClient, testDb, testPgClient } from "./index"
 
 /** Both database names are project constants; nothing derives them at runtime. */
 const EXPECTED_TEST_DATABASE = "docrivo_test"
@@ -293,8 +293,8 @@ describe("local database", () => {
   })
 
   it("builds the application client from DATABASE_URL, never DATABASE_URL_TEST", () => {
-    const appDatabase = (appSql as unknown as { options: { database: string } }).options.database
-    const testDatabase = (testSql as unknown as { options: { database: string } } | null)?.options
+    const appDatabase = (pgClient as unknown as { options: { database: string } }).options.database
+    const testDatabase = (testPgClient as unknown as { options: { database: string } } | null)?.options
       .database
 
     expect(testDatabase).toBe(EXPECTED_TEST_DATABASE)
