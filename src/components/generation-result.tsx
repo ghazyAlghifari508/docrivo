@@ -1,6 +1,7 @@
 "use client";
 
-import Link from "next/link";
+import { Link, useNavigate, isNotFound } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
 import {
   ArrowClockwise,
   ClipboardText,
@@ -9,32 +10,9 @@ import {
   Warning,
   CircleNotch,
 } from "@phosphor-icons/react";
-import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
-
-type Job = {
-  id: string;
-  sourceUrl: string;
-  status: string;
-  progress: number;
-  errorMessage?: string;
-  pagesAnalyzed: number;
-  createdAt: string;
-  assets: Array<{
-    id: string;
-    asset_type: string;
-    source_url: string;
-    filename?: string;
-    status: string;
-  }>;
-  pages: Array<{
-    id: string;
-    url: string;
-    title?: string;
-    screenshot_desktop_url?: string;
-  }>;
-  result: null | { designMd: string; implementationPrompt: string };
-};
+import { useState } from "react";
+import { isTerminalJobStatus, jobQueryOptions } from "~/lib/queries/job";
+import { CollapsibleOutput } from "~/components/collapsible-output";
 
 const STAGES = [
   "queued",
@@ -62,83 +40,25 @@ export function GenerationResult({
   id: string;
   embedded?: boolean;
 }) {
-  const [job, setJob] = useState<Job | null>(null);
+  // The poll loop, the liveness flag, the not-found branch, the transient
+  // branch and the three-sample ETA window all used to live here. The factory in
+  // `~/lib/queries/job` owns the interval and when to stop; this component only
+  // draws. `job` is typed from that factory's `queryFn`, so the hand-written
+  // mirror of the job server function's return shape is gone with it.
+  const { data: job, error, isPending } = useQuery(jobQueryOptions(id));
   const [copied, setCopied] = useState(false);
-  // ponytail: collapsed is always false — collapse toggle was never wired. Kept
-  // the guarded markup rather than churn the whole render; drop the const + the
-  // {collapsed && …} branch when the collapse feature is either built or cut.
-  const collapsed = false;
-  const [loadError, setLoadError] = useState<"" | "not_found" | "transient">(
-    "",
-  );
-  // Sliding window of [timestamp, progress] samples — used to estimate remaining time.
-  const samplesRef = useRef<Array<{ t: number; p: number }>>([]);
-  const [remaining, setRemaining] = useState(0);
-  // Reset the sample window when a new job id is shown.
-  useEffect(() => {
-    samplesRef.current = [];
-  }, [id]);
-
-  useEffect(() => {
-    let alive = true;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    let controller: AbortController | undefined;
-
-    async function tick() {
-      controller = new AbortController();
-      try {
-        const res = await fetch(`/api/generations/${id}`, {
-          cache: "no-store",
-          signal: controller.signal,
-        });
-        if (res.status === 404) {
-          if (alive) setLoadError("not_found");
-          return;
-        }
-        if (!res.ok) throw new Error(String(res.status));
-        const json = await res.json();
-        if (!alive) return;
-        setLoadError("");
-        setJob(json);
-        // Sliding window: keep up to 3 samples for progress-rate estimation.
-        const samples = samplesRef.current;
-        samples.push({ t: Date.now(), p: json.progress });
-        if (samples.length > 3) samples.shift();
-        if (
-          samples.length >= 2 &&
-          !["completed", "failed", "cancelled"].includes(json.status)
-        ) {
-          const dt = (samples[samples.length - 1].t - samples[0].t) / 1000;
-          const dp = samples[samples.length - 1].p - samples[0].p;
-          if (dp > 0)
-            setRemaining(
-              Math.round(((100 - samples[samples.length - 1].p) / dp) * dt),
-            );
-        }
-        if (!["completed", "failed", "cancelled"].includes(json.status))
-          timer = setTimeout(tick, 2500);
-      } catch (err) {
-        if (
-          !alive ||
-          (err instanceof DOMException && err.name === "AbortError")
-        )
-          return;
-        setLoadError("transient");
-        timer = setTimeout(tick, 5000);
-      }
-    }
-    tick();
-    return () => {
-      alive = false;
-      controller?.abort();
-      if (timer) clearTimeout(timer);
-    };
-  }, [id]);
 
   const Shell = embedded ? "div" : "main";
 
-  if (loadError && !job) {
-    const missing = loadError === "not_found";
+  // An error after the first successful load leaves the last good data in place,
+  // which is the same thing the old `loadError && !job` guard did: the finished
+  // document stays readable while the poll recovers. The panel is for the case
+  // where there is nothing to show at all.
+  if (error && !job) {
+    // `isNotFound` is the ownership answer and covers both halves of it -- a job
+    // owned by somebody else and an id that does not exist raise the same
+    // payload, so the two must not get different copy here.
+    const missing = isNotFound(error);
     return (
       <Shell
         id={embedded ? undefined : "main"}
@@ -157,7 +77,7 @@ export function GenerationResult({
               : "Koneksi sedang bermasalah. Halaman ini akan mencoba memuat ulang otomatis."}
           </p>
           <Link
-            href="/"
+            to="/"
             className="pressable mt-7 inline-flex h-11 items-center gap-2 rounded-buttons border border-ink bg-lime-sprint px-5 text-body-sm font-medium text-ink shadow-hard"
           >
             Buat DESIGN.md baru
@@ -167,7 +87,7 @@ export function GenerationResult({
     );
   }
 
-  if (!job) {
+  if (isPending || !job) {
     return (
       <Shell
         id={embedded ? undefined : "main"}
@@ -182,7 +102,7 @@ export function GenerationResult({
   }
 
   const markdown = job.result?.designMd;
-  const done = ["completed", "failed", "cancelled"].includes(job.status);
+  const done = isTerminalJobStatus(job.status);
   const failed = job.status === "failed";
 
   async function copy() {
@@ -197,128 +117,98 @@ export function GenerationResult({
   }
 
   return (
-    <Shell id={embedded ? undefined : "main"}>
-      {/* HERO STRIP · dark */}
-      <section className="bg-depth text-paper-white">
-        {collapsed && (
-          <div className="page-shell pb-8">
-            <div className="rounded-cards border border-paper-white/15 bg-paper-white/5 p-5">
-              <p className="break-all text-body-sm text-paper-white/80">
+    <CollapsibleOutput
+      label="Hasil DESIGN.md"
+      summary={job.sourceUrl}
+    >
+      <Shell id={embedded ? undefined : "main"}>
+        {/* HERO STRIP · dark */}
+        <section className="bg-depth text-paper-white">
+          <div className="page-shell grid gap-8 pb-12 lg:grid-cols-[1fr_360px] lg:items-end">
+            <div>
+              <h1 className="mt-5 max-w-2xl text-heading-lg font-semibold leading-heading-lg tracking-heading-lg">
+                DESIGN.md untuk <span className="emph">AI coding</span> kamu.
+              </h1>
+              <p className="mt-4 break-all text-body-sm text-paper-white/60">
                 {job.sourceUrl}
               </p>
-              <div className="mt-3 flex items-center gap-4">
-                <span className="text-caption text-paper-white/60">
-                  {done ? (failed ? "Gagal" : "Selesai") : "Berjalan"} •{" "}
+            </div>
+
+            <div className="rounded-cards border border-paper-white/15 bg-paper-white/5 p-5">
+              <div className="flex items-center justify-between text-caption text-paper-white/60">
+                <span>Proses</span>
+                <span className="inline-flex items-center gap-1.5 tabular-nums">
+                  {!done && (
+                    <span className="inline-block size-3 rounded-full border-2 border-current border-t-transparent animate-spin" />
+                  )}
                   {job.progress}%
                 </span>
-                {job.pagesAnalyzed > 0 && (
-                  <span className="text-caption text-paper-white/60">
-                    {job.pagesAnalyzed} halaman
-                  </span>
-                )}
               </div>
+              <div
+                role="progressbar"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={job.progress}
+                aria-label="Progres pembuatan DESIGN.md"
+                className="mt-3 h-2.5 overflow-hidden rounded-pills bg-paper-white/15"
+              >
+                <div
+                  className="h-full rounded-pills bg-lime-sprint transition-[width] duration-500"
+                  style={{ width: `${job.progress}%` }}
+                />
+              </div>
+              <p
+                aria-live="polite"
+                className="mt-3 text-caption text-paper-white/70"
+              >
+                {done
+                  ? failed
+                    ? "Proses berhenti. Coba ulangi dari referensi yang sama."
+                    : "DESIGN.md siap ditempel ke AI coding assistant."
+                  : `AI sedang ${STATUS_LABEL[job.status]?.toLowerCase() ?? "memproses"} halaman referensi…`}
+              </p>
+              {failed ? <Retry sourceUrl={job.sourceUrl} /> : null}
             </div>
           </div>
-        )}
 
-        {!collapsed && (
-          <>
-            <div className="page-shell grid gap-8 pb-12 lg:grid-cols-[1fr_360px] lg:items-end">
-              <div>
-                <h1 className="mt-5 max-w-2xl text-heading-lg font-semibold leading-heading-lg tracking-heading-lg">
-                  DESIGN.md untuk <span className="emph">AI coding</span> kamu.
-                </h1>
-                <p className="mt-4 break-all text-body-sm text-paper-white/60">
-                  {job.sourceUrl}
-                </p>
-              </div>
-
-              <div className="rounded-cards border border-paper-white/15 bg-paper-white/5 p-5">
-                <div className="flex items-center justify-between text-caption text-paper-white/60">
-                  <span>Proses</span>
-                  <span className="inline-flex items-center gap-1.5 tabular-nums">
-                    {!done && (
-                      <span className="inline-block size-3 rounded-full border-2 border-current border-t-transparent animate-spin" />
-                    )}
-                    {job.progress}%
-                  </span>
-                </div>
-                <div
-                  role="progressbar"
-                  aria-valuemin={0}
-                  aria-valuemax={100}
-                  aria-valuenow={job.progress}
-                  aria-label="Progres pembuatan DESIGN.md"
-                  className="mt-3 h-2.5 overflow-hidden rounded-pills bg-paper-white/15"
-                >
-                  <div
-                    className="h-full rounded-pills bg-lime-sprint transition-[width] duration-500"
-                    style={{ width: `${job.progress}%` }}
-                  />
-                </div>
-                <p
-                  aria-live="polite"
-                  className="mt-3 text-caption text-paper-white/70"
-                >
-                  {done
-                    ? failed
-                      ? "Proses berhenti. Coba ulangi dari referensi yang sama."
-                      : "DESIGN.md siap ditempel ke AI coding assistant."
-                    : `AI sedang ${STATUS_LABEL[job.status]?.toLowerCase() ?? "memproses"} halaman referensi…`}
-                </p>
-                {!done && remaining > 10 && (
-                  <p className="mt-1 text-caption text-paper-white/40">
-                    Estimasi sisa{" "}
-                    {remaining >= 120
-                      ? `${Math.round(remaining / 60)} menit`
-                      : `${remaining} detik`}
-                  </p>
-                )}
-                {failed ? <Retry sourceUrl={job.sourceUrl} /> : null}
-              </div>
+          {/* stage tracker — plain text only, no badges */}
+          {!failed && (
+            <div className="page-shell pb-10">
+              <ol className="flex flex-wrap gap-x-4 gap-y-1">
+                {STAGES.map((s) => {
+                  const idx = STAGES.indexOf(s);
+                  const cur = STAGES.indexOf(job.status);
+                  const state =
+                    cur > idx ? "done" : cur === idx ? "active" : "todo";
+                  const label = STATUS_LABEL[s] ?? s;
+                  return (
+                    <li
+                      key={s}
+                      className={`inline-flex items-center gap-1 text-caption font-medium capitalize ${
+                        state === "active"
+                          ? "text-lime-sprint"
+                          : state === "done"
+                            ? "text-mint-edge/60"
+                            : "text-paper-white/40"
+                      }`}
+                    >
+                      {state === "done" ? (
+                        <Check size={12} weight="bold" />
+                      ) : null}
+                      {state === "active" ? (
+                        <AnimatedLabel label={label} />
+                      ) : (
+                        label
+                      )}
+                    </li>
+                  );
+                })}
+              </ol>
             </div>
+          )}
+        </section>
 
-            {/* stage tracker — plain text only, no badges */}
-            {!failed && (
-              <div className="page-shell pb-10">
-                <ol className="flex flex-wrap gap-x-4 gap-y-1">
-                  {STAGES.map((s) => {
-                    const idx = STAGES.indexOf(s);
-                    const cur = STAGES.indexOf(job.status);
-                    const state =
-                      cur > idx ? "done" : cur === idx ? "active" : "todo";
-                    const label = STATUS_LABEL[s] ?? s;
-                    return (
-                      <li
-                        key={s}
-                        className={`inline-flex items-center gap-1 text-caption font-medium capitalize ${
-                          state === "active"
-                            ? "text-lime-sprint"
-                            : state === "done"
-                              ? "text-mint-edge/60"
-                              : "text-paper-white/40"
-                        }`}
-                      >
-                        {state === "done" ? (
-                          <Check size={12} weight="bold" />
-                        ) : null}
-                        {state === "active" ? (
-                          <AnimatedLabel label={label} />
-                        ) : (
-                          label
-                        )}
-                      </li>
-                    );
-                  })}
-                </ol>
-              </div>
-            )}
-          </>
-        )}
-      </section>
-
-      {/* DOCUMENT + SIDEBAR · paper */}
-      {!collapsed && (
+        {/* DOCUMENT + SIDEBAR · paper */}
         <section className="bg-paper-white">
           <div className="page-shell grid gap-6 py-12 lg:grid-cols-[1fr_320px]">
             <section className="overflow-hidden rounded-cards border border-ink bg-cream shadow-hard">
@@ -418,8 +308,8 @@ export function GenerationResult({
             </aside>
           </div>
         </section>
-      )}
-    </Shell>
+      </Shell>
+    </CollapsibleOutput>
   );
 }
 
@@ -446,10 +336,12 @@ function AnimatedLabel({ label }: { label: string }) {
 
 
 function Retry({ sourceUrl }: { sourceUrl: string }) {
-  const router = useRouter();
+  const navigate = useNavigate();
   return (
     <button
-      onClick={() => router.push(`/?url=${encodeURIComponent(sourceUrl)}`)}
+      onClick={() =>
+        void navigate({ to: "/", search: { url: sourceUrl } })
+      }
       className="pressable pressable-white mt-4 inline-flex w-full items-center justify-center gap-2 rounded-buttons border border-paper-white bg-lime-sprint px-4 py-2.5 text-body-sm font-medium text-ink shadow-hard-white"
     >
       <ArrowClockwise size={18} aria-hidden="true" />

@@ -4,30 +4,84 @@ import http from "node:http";
 import { chromium, type Page } from "playwright";
 import { generateDesign } from "../src/lib/ai-provider";
 import { AppError } from "../src/lib/errors";
-import { insforge } from "../src/lib/insforge-core";
 import { BROWSER_UA, DESKTOP_VIEWPORT, guardContext } from "../src/lib/render-page";
+import { writeScreenshot } from "../src/storage/screenshots";
 import { validateUrl } from "../src/lib/url-validator";
-import type { DesignExtraction, GenerationJob } from "../src/lib/types";
+import type { DesignExtraction, JobStatus } from "../src/lib/types";
+import {
+  advanceJobStatus,
+  claimNextJob as claimNextJobRow,
+  recordCrawledPage,
+  recordDesignExtraction,
+  recordExtractedAsset,
+  recordGeneratedDocument,
+  renewLease,
+  writeJobLog,
+  type JobRow,
+  type JobStatusPatch,
+} from "./db";
+import { runPool, workerConcurrency } from "./pool";
+import { createRetentionSchedule, resolveRetention, runRetention } from "./retention";
 
 const POLL_MS = Number(process.env.WORKER_POLL_MS ?? 2000);
 const PORT = Number(process.env.PORT ?? 8080);
 
+/**
+ * How many jobs may run at once, and how often each one proves it is alive.
+ *
+ * The bound is configuration rather than a constant because the right value is
+ * measured, not chosen: each job holds a Chromium process resident for the whole
+ * crawl, and a Fly microVM has 512MB to divide between them. The default is one,
+ * which is the pre-Task-7.1 behaviour, so raising it is a decision somebody makes
+ * with numbers in front of them.
+ *
+ * The refresh has to be comfortably inside `LEASE_MS` (five minutes): a lease
+ * that is refreshed as often as it can be is one slow write away from handing a
+ * second worker a job this one is still crawling. A minute buys four consecutive
+ * misses before that happens.
+ */
+const CONCURRENCY = workerConcurrency(process.env);
+const LEASE_REFRESH_MS = Number(process.env.WORKER_LEASE_REFRESH_MS ?? 60_000);
+const RETENTION_INTERVAL_MS = Number(process.env.RETENTION_INTERVAL_MS ?? 60 * 60_000);
+
 export async function main() {
   serveHttp();
   let backoff = POLL_MS;
-  console.log(`[worker] polling every ${POLL_MS}ms`);
+  const retention = createRetentionSchedule({
+    intervalMs: RETENTION_INTERVAL_MS,
+    now: () => new Date(),
+    run: () => runRetention({ ...resolveRetention(process.env), now: new Date() }),
+  });
+  console.log(
+    `[worker] polling every ${POLL_MS}ms, up to ${CONCURRENCY} job(s) at a time, ` +
+      `retention every ${Math.round(RETENTION_INTERVAL_MS / 60_000)}min`,
+  );
   for (;;) {
     try {
-      const job = await claimNextJob();
-      if (job) {
-        await processJob(job);
-        backoff = POLL_MS; // reset after a successful job
-      } else {
-        backoff = Math.min(backoff * 1.5, 30_000); // no jobs → easier on nano
-      }
+      // Ticked before the queue is drained, and not awaited in a way that can block
+      // it: `tick()` swallows its own failure and answers with a boolean, so an
+      // unreachable database costs one log line rather than a stalled queue.
+      void retention.tick();
+      const summary = await runPool({
+        concurrency: CONCURRENCY,
+        claim: claimNextJobRow,
+        process: processJob,
+        onError: (err, job) => {
+          // `processJob` writes the failure to the row before it returns, so a job
+          // that arrives here has already been recorded. A `null` job means the
+          // claim itself failed and there is no row to blame.
+          console.error(
+            job
+              ? `[worker] job ${job.id} failed`
+              : "[worker] claim failed",
+            err,
+          );
+        },
+      });
+      // A pool that ran at least one job means the database answered, so the
+      // connection is healthy and the short interval is right again.
+      backoff = summary.processed + summary.failed > 0 ? POLL_MS : Math.min(backoff * 1.5, 30_000);
     } catch (err) {
-      // Transient infra errors (PGRST002, socket hang) are common on a nano
-      // instance under load. Wait longer each cycle instead of spamming.
       console.error("[worker] poll failed", err);
       backoff = Math.min(backoff * 2, 30_000);
     }
@@ -50,54 +104,59 @@ function serveHttp() {
     .listen(PORT, () => console.log(`[worker] http on :${PORT}`));
 }
 
-export async function processJob(job: GenerationJob) {
-  try {
-    await log(job.id, "info", "job_started", job.source_url);
-    const browser = await chromium.launch({ headless: true, args: ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu", "--disable-software-rasterizer", "--headless=chrome", "--proxy-auto-detect"] });
+export async function processJob(job: JobRow) {
+  // The lease heartbeat wraps the whole job, not just the model call. A crawl of
+  // five pages is minutes of wall clock during which the only writes are the
+  // per-page progress ones, and a job that goes quiet for `LEASE_MS` is exactly
+  // the job `reclaim_expired_jobs()` is built to take back. A heartbeat that only
+  // covered `generateDesign` would leave the crawl unprotected.
+  return withLease(job.id, async () => {
     try {
-      const result = await crawl(browser, job);
-      await setStatus(job.id, "generating");
-      const docs = await withHeartbeat(job.id, () => generateDesign(job.source_url, result.extraction));
-      await must(
-        insforge.insert("design_extractions", [
-          {
-            job_id: job.id,
-            colors: result.extraction.colors,
-            typography: result.extraction.typography,
-            layout_patterns: result.extraction.layout_patterns,
-            components: result.extraction.components,
-            metadata: result.extraction.metadata,
-            confidence_score: result.extraction.confidence_score,
-          },
-        ]),
-      );
-      await must(
-        insforge.insert("generated_documents", [
-          {
-            job_id: job.id,
-            design_md: docs.designMd,
-            implementation_prompt: docs.implementationPrompt,
-          },
-        ]),
-      );
-      await setStatus(job.id, "completed", {
-        pages_analyzed: result.pagesAnalyzed,
-        completed_at: new Date().toISOString(),
-      });
-      await log(job.id, "info", "job_completed");
-    } finally {
-      await browser.close();
+      await log(job.id, "info", "job_started", job.sourceUrl);
+      const browser = await chromium.launch({ headless: true, args: ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu", "--disable-software-rasterizer", "--headless=chrome", "--proxy-auto-detect"] });
+      try {
+        const result = await crawl(browser, job);
+        await setStatus(job.id, "generating");
+        const docs = await withHeartbeat(job.id, () => generateDesign(job.sourceUrl, result.extraction));
+        const extraction = result.extraction;
+        // The same six columns the old table-name insert listed, named explicitly.
+        // Spreading the whole extraction would quietly start persisting `tokens`,
+        // `component_details` and the rest the first time someone added a field to
+        // `DesignExtraction`; the input type is a `Pick`, so the two lists have to
+        // agree or it stops compiling.
+        await recordDesignExtraction({
+          jobId: job.id,
+          colors: extraction.colors,
+          typography: extraction.typography,
+          layout_patterns: extraction.layout_patterns,
+          components: extraction.components,
+          metadata: extraction.metadata,
+          confidence_score: extraction.confidence_score,
+        });
+        await recordGeneratedDocument({
+          jobId: job.id,
+          designMd: docs.designMd,
+          implementationPrompt: docs.implementationPrompt,
+        });
+        await setStatus(job.id, "completed", {
+          pagesAnalyzed: result.pagesAnalyzed,
+          completedAt: new Date(),
+        });
+        await log(job.id, "info", "job_completed");
+      } finally {
+        await browser.close();
+      }
+    } catch (err) {
+      const code = err instanceof AppError ? err.code : "WEBSITE_BLOCKED";
+      const message = err instanceof Error ? err.message : "Worker failed";
+      await failJob(job.id, code, message);
     }
-  } catch (err) {
-    const code = err instanceof AppError ? err.code : "WEBSITE_BLOCKED";
-    const message = err instanceof Error ? err.message : "Worker failed";
-    await failJob(job.id, code, message);
-  }
+  });
 }
 
-async function crawl(browser: Awaited<ReturnType<typeof chromium.launch>>, job: GenerationJob) {
-  const base = new URL(job.source_url);
-  const queue: Array<{ url: string; depth: number }> = [{ url: job.source_url, depth: 0 }];
+async function crawl(browser: Awaited<ReturnType<typeof chromium.launch>>, job: JobRow) {
+  const base = new URL(job.sourceUrl);
+  const queue: Array<{ url: string; depth: number }> = [{ url: job.sourceUrl, depth: 0 }];
   const seen = new Set<string>();
   const pages: string[] = [];
   const failed: string[] = [];
@@ -123,7 +182,7 @@ async function crawl(browser: Awaited<ReturnType<typeof chromium.launch>>, job: 
 
   await setStatus(job.id, "crawling");
 
-  while (queue.length && pages.length < job.max_pages) {
+  while (queue.length && pages.length < job.maxPages) {
     const item = queue.shift()!;
     const rawUrl = item.url;
     if (seen.has(rawUrl) || shouldSkip(rawUrl)) continue;
@@ -162,16 +221,15 @@ async function crawl(browser: Awaited<ReturnType<typeof chromium.launch>>, job: 
       description ||= await page.locator('meta[name="description"]').getAttribute("content").catch(() => "") ?? "";
 
       // ponytail: page-weighted progress so the bar never bounces back
-      const pageProg = Math.min(78, Math.round(20 + (pages.length / job.max_pages) * 60));
+      const pageProg = Math.min(78, Math.round(20 + (pages.length / job.maxPages) * 60));
       await setStatus(job.id, "capturing", { progress: pageProg });
       const screenshot = await page.screenshot({ fullPage: true, type: "png" });
-      const key = `${job.id}/${pages.length + 1}.png`;
-      const uploaded = await insforge.uploadScreenshot(
-        key,
-        new Blob([new Uint8Array(screenshot)], { type: "image/png" }),
-      );
-      if (!uploaded?.url || !uploaded?.key) throw new AppError("STORAGE_FAILED", "Upload screenshot gagal.");
-      const screenshotUrl = uploaded.url;
+      // A file on local disk plus the URL the screenshot route serves, in place of
+      // the object-storage upload. The key is unchanged -- `${jobId}/${n}.png`,
+      // one-based -- so stored `crawled_pages.screenshot_desktop_url` values keep
+      // their shape. `pages.length` counts the pages already pushed, so it is the
+      // zero-based index of the page being captured.
+      const screenshotUrl = (await writeScreenshot(job.id, pages.length, screenshot)).url;
 
       const {
         colors,
@@ -214,35 +272,26 @@ async function crawl(browser: Awaited<ReturnType<typeof chromium.launch>>, job: 
         mergedFontFaces = pageFontFaces;
       }
 
-      const [crawled] = await must<{ id: string }[]>(
-        insforge.insert("crawled_pages", [
-          {
-            job_id: job.id,
-            url,
-            title: pageTitle,
-            status_code: statusCode,
-            screenshot_desktop_url: screenshotUrl,
-          },
-        ], "id"),
-      );
+      const crawled = await recordCrawledPage({
+        jobId: job.id,
+        url,
+        title: pageTitle,
+        statusCode,
+        screenshotDesktopUrl: screenshotUrl,
+      });
 
       for (const asset of foundAssets) {
-        await must(
-          insforge.insert("extracted_assets", [
-            {
-              job_id: job.id,
-              page_id: crawled?.id ?? null,
-              asset_type: asset.type,
-              source_url: asset.url,
-              filename: asset.filename,
-              status: "found",
-            },
-          ]),
-        );
+        await recordExtractedAsset({
+          jobId: job.id,
+          pageId: crawled.id,
+          assetType: asset.type,
+          sourceUrl: asset.url,
+          filename: asset.filename,
+        });
       }
 
       pages.push(url);
-      await setStatus(job.id, "extracting", { pages_analyzed: pages.length });
+      await setStatus(job.id, "extracting", { pagesAnalyzed: pages.length });
       void theme;
     } catch (err) {
       if (isPersistenceError(err)) throw err;
@@ -282,7 +331,7 @@ async function crawl(browser: Awaited<ReturnType<typeof chromium.launch>>, job: 
       pagesAnalyzed: pages,
       pagesFailed: failed.length,
     },
-    confidence_score: Math.max(0.35, Math.min(0.9, pages.length / job.max_pages)),
+    confidence_score: Math.max(0.35, Math.min(0.9, pages.length / job.maxPages)),
   };
 
   return { extraction, pagesAnalyzed: pages.length };
@@ -315,7 +364,11 @@ export async function extractPage(page: Page, domain: string, pageUrl: string) {
             if (Object.keys(cssVariables).length < 120) cssVariables[name] = value.trim();
           }
         }
-      } catch {}
+      } catch {
+        // Another origin's stylesheet. Reading its `cssRules` throws a
+        // SecurityError by design; there is nothing to recover, and the page
+        // simply contributes no CSS custom properties.
+      }
     }
 
     for (const el of top) {
@@ -405,20 +458,12 @@ export async function extractPage(page: Page, domain: string, pageUrl: string) {
             fontFaces.push({ family, weights });
           }
         }
-      } catch {}
+      } catch {
+        // Another origin's stylesheet. Reading its `cssRules` throws a
+        // SecurityError by design; there is nothing to recover, and the page
+        // simply contributes no font faces.
+      }
     }
-
-    const links = Array.from(document.querySelectorAll<HTMLAnchorElement>("a[href]"))
-      .flatMap((a) => {
-        try {
-          const u = new URL(a.getAttribute("href") || a.href, pageUrlArg);
-          return u.hostname === domainArg ? [u.href.split("#")[0]] : [];
-        } catch {
-          return [];
-        }
-      })
-      .filter((href) => !/\.(pdf|zip|exe|dmg|pkg|msi)$/i.test(href))
-      .slice(0, 20);
 
     const assets = Array.from(document.images)
       .flatMap((img) => {
@@ -436,7 +481,9 @@ export async function extractPage(page: Page, domain: string, pageUrl: string) {
       try {
         const fav = new URL(favRaw, pageUrlArg).href;
         assets.push({ url: fav, type: "favicon", filename: fav.split("/").pop() || "favicon" });
-      } catch {}
+      } catch {
+        // A malformed href in the markup, not a crawl failure.
+      }
     }
 
     return {
@@ -506,45 +553,32 @@ async function autoScrollPage(page: Page): Promise<void> {
   });
 }
 
-export async function claimNextJob(): Promise<GenerationJob | null> {
-  const result = await insforge.rpc<GenerationJob | GenerationJob[] | null>("claim_next_job");
-  if (Array.isArray(result)) return result[0] ?? null;
-  return result?.id ? result : null;
-}
-
-// Each job's highest-seen progress, monotonic so the bar never bounces back.
-const monotonicProgress = new Map<string, number>();
-
-async function setStatus(jobId: string, status: GenerationJob["status"], extra: Record<string, unknown> = {}) {
-  const stageProgress: Record<string, number> = { queued: 0, crawling: 20, capturing: 40, extracting: 60, generating: 80, completed: 100, failed: 0, cancelled: 0 };
-  // Use explicit progress from caller (per-page loop) else fall back to stage default.
-  let prog = (extra.progress as number | undefined) ?? stageProgress[status];
-  // Drop caller's progress from the spread so the clamped `prog` below always wins.
-  const rest = { ...extra };
-  delete (rest as { progress?: number }).progress;
-  // Clamp to all-time high so progress is monotonic.
-  const prev = monotonicProgress.get(jobId) ?? 0;
-  if (prog < prev) prog = prev;
-  if (prog > prev) monotonicProgress.set(jobId, prog);
-  // Clear marker on terminal states so next job isn't capped.
-  // Failed/cancelled also force 0 so the bar doesn't show 100% – use explicit 0 bypass clamp.
-  if (status === "failed" || status === "cancelled") prog = 0;
-  if (["completed", "failed", "cancelled"].includes(status)) monotonicProgress.delete(jobId);
-  await insforge.update("generation_jobs", { id: jobId }, {
-    status,
-    progress: prog,
-    updated_at: new Date().toISOString(),
-    ...rest,
-  });
+/**
+ * A thin wrapper over `advanceJobStatus`, kept so the call sites read as a
+ * transition rather than a database call. The monotonic high-water clamp, the
+ * stage defaults and the forced-zero on failure all live in `./db` now, where
+ * `worker/db.test.ts` can reach them: they are policy about a column, and this
+ * file is a crawl loop.
+ */
+async function setStatus(
+  jobId: string,
+  status: JobStatus,
+  patch: JobStatusPatch = {},
+) {
+  await advanceJobStatus(jobId, status, patch);
 }
 
 async function log(jobId: string, level: "info" | "warn" | "error", event: string, message?: string, context?: unknown) {
-  await insforge.insert("job_logs", [{ job_id: jobId, level, event, message, context }]);
+  await writeJobLog({ jobId, level, event, message, context });
 }
 
 function isPersistenceError(err: unknown) {
+  // The first clause is the load-bearing one now: every write in `./db` goes
+  // through `persist()`, which raises `STORAGE_FAILED`. The regex stays for
+  // errors raised outside that module -- a screenshot write throws the
+  // filesystem's own error rather than a wrapped one.
   return err instanceof AppError && err.code === "STORAGE_FAILED"
-    || err instanceof Error && /database|storage|records|upload|insert|patch|rpc/i.test(err.message);
+    || err instanceof Error && /storage|upload|screenshot/i.test(err.message);
 }
 
 function errorDetails(err: unknown) {
@@ -557,9 +591,9 @@ function errorDetails(err: unknown) {
 
 async function failJob(jobId: string, code: string, message: string) {
   await setStatus(jobId, "failed", {
-    error_code: code,
-    error_message: message,
-    completed_at: new Date().toISOString(),
+    errorCode: code,
+    errorMessage: message,
+    completedAt: new Date(),
   });
   await log(jobId, "error", "job_failed", `${code}: ${message}`);
 }
@@ -577,8 +611,37 @@ async function withHeartbeat<T>(jobId: string, work: () => Promise<T>) {
   }
 }
 
-async function must<T = unknown>(query: PromiseLike<T>): Promise<T> {
-  return query;
+/**
+ * Extends the job's lease for as long as `work` runs.
+ *
+ * Separate from `withHeartbeat` above because the two write different columns for
+ * different reasons. That one pings `status`, which is what the browser's progress
+ * bar polls, and it must not run during the crawl: writing `generating` while the
+ * crawler is still on page two would tell the user something untrue. This one
+ * writes `lease_expires_at` and nothing else, because the reclaim asks "is anybody
+ * still working on this" and that question has to be answerable during every
+ * phase.
+ *
+ * A failed renewal is logged and the job carries on. The alternative -- failing the
+ * job because a heartbeat could not be written -- would turn a transient database
+ * blip into a lost paid-for generation, and the lease exists precisely to survive
+ * a few missed writes.
+ */
+async function withLease<T>(jobId: string, work: () => Promise<T>) {
+  const timer = setInterval(() => {
+    void renewLease({ jobId, now: new Date() })
+      .then((renewed) => {
+        if (!renewed) console.error(`[worker] lease lost: job ${jobId} is gone`);
+      })
+      .catch((err) => {
+        console.error("[worker] lease renewal failed", err);
+      });
+  }, LEASE_REFRESH_MS);
+  try {
+    return await work();
+  } finally {
+    clearInterval(timer);
+  }
 }
 
 function sleep(ms: number) {

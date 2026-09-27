@@ -13,12 +13,14 @@
 # testing
 /coverage
 
-# next.js
-/.next/
-/out/
-
 # production
 /build
+# TanStack Start build output (`vite build` -> dist/client + dist/server)
+/dist
+/.output
+/.nitro
+/.tanstack
+/.vinxi
 
 # misc
 .DS_Store
@@ -32,13 +34,17 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# ...except the template. It holds no secrets, and it is the only record of which
+# variables the app actually reads -- Task 6.1 rewrote it against the source and
+# the change was invisible while this rule swallowed it. `.env.local` stays
+# ignored: the negation names one file.
+!.env.example
 
 # vercel
 .vercel
 
 # typescript
 *.tsbuildinfo
-next-env.d.ts
 
 # InsForge & AI agent skills
 .insforge
@@ -57,3 +63,14 @@ next-env.d.ts
 
 # knowledge-graph cache (regenerated on demand)
 /graphify-out/cache
+
+# migration artifacts: production data dumps must never be committed
+backup/
+var/
+
+# drizzle-kit output: the baseline was applied by hand, so a stray
+# drizzle-kit migrate or push would try to CREATE TABLE what already exists
+/drizzle/
+
+.worktrees/
+.vitest/

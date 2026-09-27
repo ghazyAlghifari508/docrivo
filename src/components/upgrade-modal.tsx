@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { Link } from "@tanstack/react-router";
 import { useEffect, useRef, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { Lock, X } from "@phosphor-icons/react";
@@ -82,7 +82,7 @@ export function UpgradeModal({
         <p className="mt-3 text-body-sm leading-7 text-muted">{message}</p>
 
         <Link
-          href="/pricing"
+          to="/pricing"
           className="pressable mt-6 inline-flex h-12 w-full items-center justify-center rounded-buttons border border-ink bg-lime-sprint px-6 text-body-sm font-medium text-ink shadow-hard"
         >
           {ctaLabel}

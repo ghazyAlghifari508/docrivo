@@ -1,9 +1,9 @@
 "use client";
 
-import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { ArrowRight, GlobeHemisphereWest, Warning } from "@phosphor-icons/react";
 import { useState, type FormEvent } from "react";
+import { createGeneration } from "~/queries/jobs";
 
 export function GenerationForm({
   tone = "light",
@@ -18,9 +18,11 @@ export function GenerationForm({
   onQuotaExceeded?: () => void;
   onCreated?: (jobId: string) => void;
 }) {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const [url, setUrl] = useState(searchParams.get("url") ?? "");
+  const navigate = useNavigate();
+  // `strict: false` because `?url=` is not declared by `/`'s `validateSearch` --
+  // the home route has no search schema, and a strict read would throw.
+  const search = useSearch({ strict: false }) as { url?: unknown };
+  const [url, setUrl] = useState(typeof search.url === "string" ? search.url : "");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const dark = tone === "dark";
@@ -36,26 +38,27 @@ export function GenerationForm({
     setLoading(true);
     setError("");
     try {
-      const res = await fetch("/api/generations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url }),
-      });
-      const json = await res.json();
-      if (res.status === 401) {
-        router.push("/login");
-        return;
-      }
-      if (res.status === 402) {
-        onQuotaExceeded?.();
-        return;
-      }
-      if (!res.ok) {
+      // The server function derives the user from the session, so there is no
+      // `userId` in the payload for a caller to forge, and it answers with a
+      // discriminated result rather than throwing so each failure keeps its own
+      // message.
+      const result = await createGeneration({ data: { url: url.trim() } });
+
+      if (!result.ok) {
+        if (result.error.code === "UNAUTHORIZED") {
+          void navigate({ to: "/login" });
+          return;
+        }
+        if (result.error.code === "QUOTA_EXCEEDED") {
+          onQuotaExceeded?.();
+          return;
+        }
         setError("DESIGN.md gagal dibuat. Pastikan link publik bisa dibuka, lalu coba lagi.");
         return;
       }
-      onCreated?.(json.jobId);
-      router.push(`/generations/${json.jobId}`);
+
+      onCreated?.(result.jobId);
+      void navigate({ to: "/generations/$id", params: { id: result.jobId } });
     } catch {
       setError("Jaringan bermasalah. Coba lagi sebentar lagi.");
     } finally {
@@ -90,7 +93,7 @@ Website referensi
 
         {guest ? (
           <Link
-            href="/login"
+            to="/login"
             className="pressable inline-flex h-14 items-center justify-center gap-2 rounded-buttons border border-ink bg-lime-sprint px-6 text-body-sm font-medium text-ink shadow-hard"
           >
             Masuk untuk mulai

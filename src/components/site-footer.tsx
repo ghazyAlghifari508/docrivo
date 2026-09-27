@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { Link } from "@tanstack/react-router";
 
 const PRODUCT = [
   ["Buat DESIGN.md", "/"],
@@ -32,8 +32,8 @@ export function SiteFooter() {
         <div className="mt-16 flex flex-col gap-3 border-t border-rule pt-6 text-caption text-muted-gray sm:flex-row sm:items-center sm:justify-between">
           <span>© {new Date().getFullYear()} Docrivo. Dibuat untuk vibecoder.</span>
           <div className="flex gap-6">
-            <Link href="/faq" className="link-underline">FAQ</Link>
-            <Link href="/bantuan" className="link-underline">Bantuan</Link>
+            <Link to="/faq" className="link-underline">FAQ</Link>
+            <Link to="/bantuan" className="link-underline">Bantuan</Link>
           </div>
         </div>
       </div>
@@ -56,7 +56,7 @@ function FooterCol({ title, links }: { title: string; links: string[][] }) {
       <ul className="mt-5 space-y-3 text-body-sm">
         {links.map(([label, href]) => (
           <li key={label + href}>
-            <Link href={href} className="text-ink link-underline">{label}</Link>
+            <Link to={href} className="text-ink link-underline">{label}</Link>
           </li>
         ))}
       </ul>

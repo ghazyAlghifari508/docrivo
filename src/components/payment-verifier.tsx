@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@tanstack/react-router";
 import { CircleNotch, CheckCircle, Warning } from "@phosphor-icons/react";
+import { verifyPayment } from "~/queries/entitlements";
 
 type State = "checking" | "paid" | "pending" | "error";
 
 /** Runs once after Midtrans redirects back with ?order_id=. Polls verify, then
- *  refreshes the server component so the new plan/credits show. */
+ *  refreshes the route loader so the new plan/credits show. */
 export function PaymentVerifier({ orderId }: { orderId: string }) {
   const router = useRouter();
   const [state, setState] = useState<State>("checking");
@@ -18,22 +19,29 @@ export function PaymentVerifier({ orderId }: { orderId: string }) {
     ran.current = true;
     let alive = true;
 
-    (async () => {
+    // `void` on the IIFE: the body catches everything it can, and the `alive`
+    // flag is what actually stops a late `setState`, so there is nothing for a
+    // caller to await here.
+    void (async () => {
       try {
-        const res = await fetch("/api/payments/verify", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ order_id: orderId }),
-        });
-        const json = await res.json();
+        // Poll-based, exactly as before: the deleted `/api/payments/verify`
+        // handler asked Midtrans for the order status and, if it was paid,
+        // claimed the pending transaction. The claim is now inside
+        // `verifyPayment`, so this component has no way to skip it.
+        const result = await verifyPayment({ data: { orderId } });
         if (!alive) return;
-        if (res.ok && json.status === "paid") {
-          setState("paid");
-          router.refresh();
-        } else if (res.ok) {
-          setState("pending");
-        } else {
+
+        if (!result.ok) {
           setState("error");
+          return;
+        }
+        if (result.status === "paid" || result.status === "settlement" || result.status === "capture") {
+          setState("paid");
+          // `invalidate()` is the equivalent of Next's `router.refresh()`: it
+          // re-runs the matched loaders in place instead of reloading the page.
+          void router.invalidate();
+        } else {
+          setState("pending");
         }
       } catch {
         if (alive) setState("error");

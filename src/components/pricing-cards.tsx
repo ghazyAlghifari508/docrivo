@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Check, CircleNotch, Crown, Lock, Sparkle } from "@phosphor-icons/react";
+import { createPayment } from "~/queries/entitlements";
 
 type PlanCard = {
   plan: string;
@@ -38,18 +39,16 @@ export function PricingCards({ plans, currentPlan }: { plans: PlanCard[]; curren
     setBusy(plan);
     setError("");
     try {
-      const res = await fetch("/api/payments/create", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plan }),
-      });
-      const json = await res.json();
-      if (!res.ok || !json.redirectUrl) {
-        setError("Gagal memulai pembayaran. Coba lagi.");
+      // The price is read from the catalogue on the server, never sent from
+      // here, so a tampered payload cannot buy a plan for less.
+      const result = await createPayment({ data: { plan } });
+
+      if (!result.ok) {
+        setError(result.error.message || "Gagal memulai pembayaran. Coba lagi.");
         setBusy("");
         return;
       }
-      window.location.assign(json.redirectUrl);
+      window.location.assign(result.redirectUrl);
     } catch {
       setError("Jaringan bermasalah. Coba lagi.");
       setBusy("");

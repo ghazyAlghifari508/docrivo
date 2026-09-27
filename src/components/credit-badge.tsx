@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { Link } from "@tanstack/react-router";
 
 function quota(v: number | null, label: string) {
   return v == null ? `Unlimited ${label}` : `${v} ${label}`;
@@ -24,7 +24,7 @@ export function CreditBadge({
       <span>
         <span className="font-semibold text-ink">{quota(scrape, "Scrape")}</span>
       </span>
-      <Link href="/pricing" className="link-underline font-semibold text-ink">
+      <Link to="/pricing" className="link-underline font-semibold text-ink">
         Upgrade
       </Link>
     </div>
