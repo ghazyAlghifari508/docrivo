@@ -25,6 +25,7 @@ import { Route as TentangRouteImport } from './routes/tentang'
 import { Route as GenerationsIdRouteImport } from './routes/generations.$id'
 import { Route as ApiScrapeAssetRouteImport } from './routes/api/scrape.asset'
 import { Route as ApiScrapePreviewRouteImport } from './routes/api/scrape.preview'
+import { Route as ApiScreenshotSplatRouteImport } from './routes/api/screenshot.$'
 import { Route as HistoryScrapesIdRouteImport } from './routes/history_.scrapes.$id'
 import { Route as ApiGenerationsIdDownloadRouteImport } from './routes/api/generations.$id.download'
 
@@ -108,6 +109,11 @@ const ApiScrapePreviewRoute = ApiScrapePreviewRouteImport.update({
   path: '/api/scrape/preview',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiScreenshotSplatRoute = ApiScreenshotSplatRouteImport.update({
+  id: '/api/screenshot/$',
+  path: '/api/screenshot/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const HistoryScrapesIdRoute = HistoryScrapesIdRouteImport.update({
   id: '/history_/scrapes/$id',
   path: '/history/scrapes/$id',
@@ -137,6 +143,7 @@ export interface FileRoutesByFullPath {
   '/generations/$id': typeof GenerationsIdRoute
   '/api/scrape/asset': typeof ApiScrapeAssetRoute
   '/api/scrape/preview': typeof ApiScrapePreviewRoute
+  '/api/screenshot/$': typeof ApiScreenshotSplatRoute
   '/history/scrapes/$id': typeof HistoryScrapesIdRoute
   '/api/generations/$id/download': typeof ApiGenerationsIdDownloadRoute
 }
@@ -157,6 +164,7 @@ export interface FileRoutesByTo {
   '/generations/$id': typeof GenerationsIdRoute
   '/api/scrape/asset': typeof ApiScrapeAssetRoute
   '/api/scrape/preview': typeof ApiScrapePreviewRoute
+  '/api/screenshot/$': typeof ApiScreenshotSplatRoute
   '/history/scrapes/$id': typeof HistoryScrapesIdRoute
   '/api/generations/$id/download': typeof ApiGenerationsIdDownloadRoute
 }
@@ -178,6 +186,7 @@ export interface FileRoutesById {
   '/generations/$id': typeof GenerationsIdRoute
   '/api/scrape/asset': typeof ApiScrapeAssetRoute
   '/api/scrape/preview': typeof ApiScrapePreviewRoute
+  '/api/screenshot/$': typeof ApiScreenshotSplatRoute
   '/history_/scrapes/$id': typeof HistoryScrapesIdRoute
   '/api/generations/$id/download': typeof ApiGenerationsIdDownloadRoute
 }
@@ -200,6 +209,7 @@ export interface FileRouteTypes {
     | '/generations/$id'
     | '/api/scrape/asset'
     | '/api/scrape/preview'
+    | '/api/screenshot/$'
     | '/history/scrapes/$id'
     | '/api/generations/$id/download'
   fileRoutesByTo: FileRoutesByTo
@@ -220,6 +230,7 @@ export interface FileRouteTypes {
     | '/generations/$id'
     | '/api/scrape/asset'
     | '/api/scrape/preview'
+    | '/api/screenshot/$'
     | '/history/scrapes/$id'
     | '/api/generations/$id/download'
   id:
@@ -240,6 +251,7 @@ export interface FileRouteTypes {
     | '/generations/$id'
     | '/api/scrape/asset'
     | '/api/scrape/preview'
+    | '/api/screenshot/$'
     | '/history_/scrapes/$id'
     | '/api/generations/$id/download'
   fileRoutesById: FileRoutesById
@@ -261,6 +273,7 @@ export interface RootRouteChildren {
   GenerationsIdRoute: typeof GenerationsIdRoute
   ApiScrapeAssetRoute: typeof ApiScrapeAssetRoute
   ApiScrapePreviewRoute: typeof ApiScrapePreviewRoute
+  ApiScreenshotSplatRoute: typeof ApiScreenshotSplatRoute
   HistoryScrapesIdRoute: typeof HistoryScrapesIdRoute
   ApiGenerationsIdDownloadRoute: typeof ApiGenerationsIdDownloadRoute
 }
@@ -379,6 +392,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiScrapePreviewRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/screenshot/$': {
+      id: '/api/screenshot/$'
+      path: '/api/screenshot/$'
+      fullPath: '/api/screenshot/$'
+      preLoaderRoute: typeof ApiScreenshotSplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/history_/scrapes/$id': {
       id: '/history_/scrapes/$id'
       path: '/history/scrapes/$id'
@@ -413,6 +433,7 @@ const rootRouteChildren: RootRouteChildren = {
   GenerationsIdRoute: GenerationsIdRoute,
   ApiScrapeAssetRoute: ApiScrapeAssetRoute,
   ApiScrapePreviewRoute: ApiScrapePreviewRoute,
+  ApiScreenshotSplatRoute: ApiScreenshotSplatRoute,
   HistoryScrapesIdRoute: HistoryScrapesIdRoute,
   ApiGenerationsIdDownloadRoute: ApiGenerationsIdDownloadRoute,
 }
