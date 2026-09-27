@@ -1678,6 +1678,16 @@ Get-ChildItem src/lib -Filter *.ts | Select-Object -ExpandProperty Name
 
 Expected to include `ai-provider.ts`, `preview-html.ts`, `render-page.ts`, `fetch-html.ts`, `url-validator.ts` and their `.test.ts` siblings. Anything else in `src/lib` that references InsForge is deleted, not preserved.
 
+**`src/lib/auth-actions.ts` holds a SECOND `safeNext`, and the Task 2.3 report missed it.** The copy in `src/app/api/auth/callback/route.ts` is the consume-side one; this is the *input-side* copy, sanitising form data before it writes the `insforge_oauth_next` cookie. Both carried the same `/\` off-origin hole that `src/auth/redirect.ts` now closes — the Task 2.3 review confirmed `/\evil.example`, `/\t/evil.example` and `/\r\n/evil.example` all resolved to `https://evil.example/` through the originals.
+
+Delete the file, do not port it. It imports `@insforge/sdk/ssr`, and the single guard in `src/auth/redirect.ts` replaces both copies. Before deleting, confirm no preserved module imports it:
+
+```bash
+Select-String -Path src/lib/ai-provider.ts,src/lib/preview-html.ts,src/lib/render-page.ts,src/lib/fetch-html.ts,src/lib/url-validator.ts -Pattern "auth-actions"
+```
+
+Expected: no matches. A match means a preserved file depends on InsForge and must be reworked, not carried.
+
 - [ ] **Step 5: Delete the Next.js tree**
 
 ```bash
