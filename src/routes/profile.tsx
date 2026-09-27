@@ -3,7 +3,8 @@ export const Route = createFileRoute("/profile")({
   // AUTH NOT ENFORCED. The deleted page called `requireUser()` from
   // `src/lib/dal` (removed in Task 3.1) and redirected to /login. Task 7.3 adds
   // the root loader that resolves the session once per request; that is where
-  // the `beforeLoad` guard belongs. Until then this route renders for anyone.
+  // the `beforeLoad` guard belongs. Until then `loadProfile` resolves the
+  // identity itself and renders the signed-out state rather than redirecting.
   // Optional keys: see the note in `index.tsx` on why a non-optional key here
   // would make `search` mandatory on every link to /profile.
   validateSearch: (
@@ -16,6 +17,7 @@ export const Route = createFileRoute("/profile")({
       ...(error === undefined ? {} : { error }),
     }
   },
+  loader: loadProfile,
   head: () => ({
     meta: [
       { title: "Profile - Docrivo" },
@@ -31,24 +33,29 @@ import { ArrowRight, CheckCircle, GearSix, SignOut, UserCircle, Warning } from "
 import { SiteHeader } from "~/components/site-header";
 import { SiteFooter } from "~/components/site-footer";
 import { signOut } from "~/auth/client";
+import { getProfile, updateProfile } from "~/queries/profile";
 
-// TODO(Task 4.3): the deleted page read the session with `requireUser()` from
-// `src/lib/dal`. Task 4.3 adds the `updateProfile` server function and Task 7.3
-// adds the root loader, and between them this placeholder is replaced by the
-// real `id` / `email` / `name`. `updateProfile` was a server action
-// (`src/lib/auth-actions.ts`, deleted in Task 3.1); the form below therefore has
-// no action and its submit is inert until that task lands.
-const user = { id: "", email: "", name: "Pengguna Docrivo" } as {
-  id: string;
-  email: string;
-  name: string;
-};
+/**
+ * The identity is the session user's own `users` row, read by `getProfile`.
+ * `null` is a signed-out visitor, which the page renders as an explicit
+ * signed-out state rather than as a blank name -- the deleted page's placeholder
+ * string made a logged-out visitor look like an account called "Pengguna
+ * Docrivo".
+ */
+async function loadProfile() {
+  const user = await getProfile({ data: undefined }).catch(() => null)
+  return { user }
+}
+
+const SIGNED_OUT = { id: "", email: "", name: "Belum masuk" } as const
 
 
 export function ProfilePage() {
-  const params = Route.useSearch();
-  const navigate = useNavigate();
-  const name = user.name;
+  const { user } = Route.useLoaderData()
+  const params = Route.useSearch()
+  const navigate = useNavigate()
+  const identity = user ?? SIGNED_OUT
+  const name = identity.name
 
   // Same substitution as `site-header.tsx`: the Next version posted to a
   // `signOut` server action, which no longer exists. `src/auth/client.ts`
@@ -56,6 +63,19 @@ export function ProfilePage() {
   const handleSignOut = useCallback(async () => {
     await signOut();
     void navigate({ to: "/" });
+  }, [navigate]);
+
+  const handleSave = useCallback(async (form: FormData) => {
+    const displayName = form.get("name");
+    const result = await updateProfile({
+      data: { name: typeof displayName === "string" ? displayName : "" },
+    });
+
+    if (!result.ok) {
+      void navigate({ to: "/profile", search: { error: result.error.code } });
+      return;
+    }
+    void navigate({ to: "/profile", search: { updated: "1" } });
   }, [navigate]);
 
   return (
@@ -98,10 +118,16 @@ export function ProfilePage() {
                 </p>
               ) : null}
 
-              {/* TODO(Task 4.3): point `action` at the `updateProfile` server
-                  function. Until then the submit reloads the page and nothing is
-                  persisted. */}
-              <form className="mt-6 space-y-5">
+              {/* `updateProfile` is a server function, not a form action: it
+                  validates the name server-side and reports which rule it broke,
+                  so the form only has to hand over the raw string. */}
+              <form
+                className="mt-6 space-y-5"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void handleSave(new FormData(event.currentTarget));
+                }}
+              >
                 <label className="block">
                   <span className="text-caption font-semibold uppercase tracking-[0.08em] text-muted-gray">Nama tampilan</span>
                   <input
@@ -113,10 +139,14 @@ export function ProfilePage() {
                   />
                 </label>
 
-                <ReadonlyField label="Email" value={user.email} />
-                <ReadonlyField label="User ID" value={user.id} mono />
+                <ReadonlyField label="Email" value={identity.email} />
+                <ReadonlyField label="User ID" value={identity.id} mono />
 
-                <button className="pressable inline-flex h-12 items-center justify-center rounded-buttons border border-ink bg-lime-sprint px-6 text-body-sm font-semibold text-ink shadow-hard">
+                <button
+                  type="submit"
+                  disabled={!user}
+                  className="pressable inline-flex h-12 items-center justify-center rounded-buttons border border-ink bg-lime-sprint px-6 text-body-sm font-semibold text-ink shadow-hard disabled:cursor-not-allowed disabled:opacity-50"
+                >
                   Simpan profile
                 </button>
               </form>
@@ -126,7 +156,7 @@ export function ProfilePage() {
               <div className="rounded-cards border border-ink bg-paper-white p-5 shadow-hard">
                 <p className="text-caption font-semibold uppercase tracking-[0.08em] text-muted-gray">Akun aktif</p>
                 <p className="mt-3 text-title font-semibold text-ink">{name}</p>
-                <p className="mt-1 truncate text-body-sm text-muted">{user.email}</p>
+                <p className="mt-1 truncate text-body-sm text-muted">{identity.email}</p>
               </div>
 
               <Link to="/setting" className="pressable flex items-center justify-between rounded-cards border border-ink bg-paper-white p-4 text-body-sm font-medium text-ink shadow-hard">

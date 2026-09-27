@@ -7,6 +7,7 @@ import { scrapeArtifacts } from "~/db/schema"
 import { AppError, ERROR_CODES, failure, type ActionResult } from "~/lib/errors"
 import { scrapeHtml } from "~/lib/fetch-html"
 import { validateUrl } from "~/lib/url-validator"
+import { consumeQuota, refundQuota } from "./entitlements"
 import { checkRateLimit } from "./rate-limit"
 
 export type ScrapeArtifact = typeof scrapeArtifacts.$inferSelect
@@ -196,9 +197,7 @@ export const deleteScrape = createServerFn({ method: "POST" })
  *
  * Answers with a value rather than throwing, because the client distinguishes
  * signed out, rate limited, out of credits, private URL and unreachable site --
- * each with its own message. The credit gate lands in Task 4.3, when
- * `consumeQuota` exists; until then the `QUOTA_EXCEEDED` branch is unreachable
- * and the client-side `remaining` pre-check is the only guard.
+ * each with its own message.
  *
  * `scrapeHtml` is imported at module scope on purpose: it reaches Playwright
  * through a dynamic `import()` of `render-page`, so naming it here does not pull
@@ -245,13 +244,20 @@ export const createScrape = createServerFn({ method: "POST" })
         )
       }
 
+      // The credit gate, before any browser is launched. `consume_quota` locks
+      // the entitlement row, so two clicks cannot both pass.
+      const quota = await consumeQuota({ userId: user.id, kind: "scrape" })
+      if (!quota.allowed) {
+        return failure("QUOTA_EXCEEDED", ERROR_CODES.QUOTA_EXCEEDED)
+      }
+
       let captured: Awaited<ReturnType<typeof scrapeHtml>>
       try {
         captured = await scrapeHtml(normalized, data.attemptNumber)
       } catch (error) {
-        // `AppError` carries the reason the URL was refused; anything else is
-        // the browser or the network, which is a transient the user should be
-        // told to retry rather than a URL they should go and fix.
+        // The scrape never produced anything, so the credit was never really
+        // used. Idempotent and clamped at zero, so a repeat is harmless.
+        await refundQuota({ userId: user.id, kind: "scrape" }).catch(() => undefined)
         if (error instanceof AppError) {
           return failure(error.code, error.message)
         }
@@ -271,6 +277,7 @@ export const createScrape = createServerFn({ method: "POST" })
       } catch {
         // The scrape succeeded and the write did not. Saying "website blocked"
         // here would send the user off to fix a URL that was never the problem.
+        await refundQuota({ userId: user.id, kind: "scrape" }).catch(() => undefined)
         return failure("STORAGE_FAILED", ERROR_CODES.STORAGE_FAILED)
       }
 

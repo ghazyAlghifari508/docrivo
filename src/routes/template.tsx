@@ -3,7 +3,9 @@ export const Route = createFileRoute("/template")({
   // AUTH NOT ENFORCED. The deleted page called `requireUser()` from
   // `src/lib/dal` (removed in Task 3.1) and redirected to /login. Task 7.3 adds
   // the root loader that resolves the session once per request; that is where
-  // the `beforeLoad` guard belongs. Until then this route renders for anyone.
+  // the `beforeLoad` guard belongs. Until then the unlock is decided from the
+  // catalogue and the signed-in user's plan.
+  loader: loadTemplate,
   head: () => ({
     meta: [
       { title: "Template - Docrivo" },
@@ -16,17 +18,35 @@ export const Route = createFileRoute("/template")({
 import { SiteHeader } from "~/components/site-header";
 import { SiteFooter } from "~/components/site-footer";
 import { TemplateLock } from "~/components/template-lock";
+import { listPlans } from "~/queries/plans";
+import { getEntitlement } from "~/queries/entitlements";
+import { getProfile } from "~/queries/profile";
 
-// TODO(Task 4.3): `templatesUnlocked(getEntitlement(user.id), getPlans())` came
-// from `src/lib/plans.ts`, whose two data calls were InsForge RPCs. Task 4.3
-// replaces them with the `getEntitlement` and `listPlans` server functions.
-// Hard-coded to `false` meanwhile, which is the locked state -- the same state
-// a free-plan visitor saw, and the conservative one to render for a user whose
-// plan cannot be read yet.
-const unlocked = false;
+/**
+ * `templates_unlocked` on the user's own plan row, read through the entitlement
+ * functions. A signed-out visitor, a failed read and a plan without the flag all
+ * land on `false`, which is the locked state and the conservative one to render:
+ * showing the library to someone who cannot pay for it is the worse failure of
+ * the two.
+ */
+async function loadTemplate() {
+  const user = await getProfile({ data: undefined }).catch(() => null)
+  if (!user) return { unlocked: false }
+
+  const [plans, entitlement] = await Promise.all([
+    listPlans({ data: undefined }).catch(() => []),
+    getEntitlement({ userId: user.id }).catch(() => null),
+  ])
+
+  const unlocked =
+    plans.find((p) => p.plan === entitlement?.plan)?.templates_unlocked ?? false
+  return { unlocked }
+}
 
 
 export function TemplatePage() {
+  const { unlocked } = Route.useLoaderData()
+
   return (
     <>
       <SiteHeader />

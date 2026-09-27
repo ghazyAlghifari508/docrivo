@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "@tanstack/react-router";
 import { CircleNotch, CheckCircle, Warning } from "@phosphor-icons/react";
+import { verifyPayment } from "~/queries/entitlements";
 
 type State = "checking" | "paid" | "pending" | "error";
 
@@ -23,25 +24,24 @@ export function PaymentVerifier({ orderId }: { orderId: string }) {
     // caller to await here.
     void (async () => {
       try {
-        // TODO(Task 4.3): replace this POST with the Midtrans verification
-        // server function. `/api/payments/verify` was deleted in Task 3.1; Task
-        // 4.3 adopts `src/lib/midtrans.ts` and owns the replacement.
-        const res = await fetch("/api/payments/verify", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ order_id: orderId }),
-        });
-        const json = await res.json();
+        // Poll-based, exactly as before: the deleted `/api/payments/verify`
+        // handler asked Midtrans for the order status and, if it was paid,
+        // claimed the pending transaction. The claim is now inside
+        // `verifyPayment`, so this component has no way to skip it.
+        const result = await verifyPayment({ data: { orderId } });
         if (!alive) return;
-        if (res.ok && json.status === "paid") {
+
+        if (!result.ok) {
+          setState("error");
+          return;
+        }
+        if (result.status === "paid" || result.status === "settlement" || result.status === "capture") {
           setState("paid");
           // `invalidate()` is the equivalent of Next's `router.refresh()`: it
           // re-runs the matched loaders in place instead of reloading the page.
           void router.invalidate();
-        } else if (res.ok) {
-          setState("pending");
         } else {
-          setState("error");
+          setState("pending");
         }
       } catch {
         if (alive) setState("error");

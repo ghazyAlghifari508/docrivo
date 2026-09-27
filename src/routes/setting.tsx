@@ -3,7 +3,9 @@ export const Route = createFileRoute("/setting")({
   // AUTH NOT ENFORCED. The deleted page called `requireUser()` from
   // `src/lib/dal` (removed in Task 3.1) and redirected to /login. Task 7.3 adds
   // the root loader that resolves the session once per request; that is where
-  // the `beforeLoad` guard belongs. Until then this route renders for anyone.
+  // the `beforeLoad` guard belongs. Until then `loadSetting` resolves the
+  // identity itself and the page renders its signed-out state.
+  loader: loadSetting,
   head: () => ({
     meta: [
       { title: "Setting - Docrivo" },
@@ -20,46 +22,73 @@ import { CreditBadge } from "~/components/credit-badge";
 import { SiteHeader } from "~/components/site-header";
 import { SiteFooter } from "~/components/site-footer";
 import { signOut } from "~/auth/client";
+import { listJobs } from "~/queries/jobs";
+import { listScrapes } from "~/queries/scrapes";
+import { getEntitlement } from "~/queries/entitlements";
+import { listPlans } from "~/queries/plans";
+import { getProfile } from "~/queries/profile";
 
-type Plan = { plan: string; label: string; designmd_quota: number | null; scrape_quota: number | null; templates_unlocked: boolean };
-type Entitlement = { user_id: string; plan: string; designmd_used: number; scrape_used: number };
-type HistoryRow = { created_at: string };
+/**
+ * Every value on this page is now read, not assumed: the identity from the
+ * session, the plan and the remaining credits from the entitlement functions,
+ * and the activity counts from the two user-scoped list functions. The deleted
+ * version stood in a free plan, zero counters and no identity.
+ *
+ * A signed-out visitor -- the state Task 7.3's guard will turn into a redirect
+ * -- gets the same free-plan view the deleted page rendered for everyone.
+ */
+async function loadSetting() {
+  const user = await getProfile({ data: undefined }).catch(() => null)
+  if (!user) {
+    return {
+      identity: { id: "", email: "", name: "Belum masuk" },
+      planLabel: "Free",
+      plan: null as { designmd_quota: number | null; scrape_quota: number | null } | null,
+      used: { designmd: 0, scrape: 0 },
+      remaining: { designmd: 0, scrape: 0 },
+      templateOpen: false,
+      activity: { generations: 0, scrapes: 0, latest: null as string | null },
+    }
+  }
 
-// TODO(Task 4.1 / 4.2 / 4.3): every value below stood in for a call that no
-// longer exists.
-//   `requireUser()`               -> `src/lib/dal`, deleted in Task 3.1
-//   `getGenerationHistory(100)`   -> `listJobs` server function (Task 4.1)
-//   `getScrapeHistory(100)`       -> `listScrapes` server function (Task 4.2)
-//   `getPlans()` / `getEntitlement` -> `listPlans` / `getEntitlement` (Task 4.3)
-// Until those land the page renders with a free plan, zero activity, and no
-// session identity.
-const user = { id: "", email: "", name: "Pengguna Docrivo" };
-const plans: Plan[] = [
-  { plan: "free", label: "Free", designmd_quota: 3, scrape_quota: 5, templates_unlocked: false },
-];
-const entitlement: Entitlement = { user_id: "", plan: "free", designmd_used: 0, scrape_used: 0 };
-const generations: HistoryRow[] = [];
-const scrapes: HistoryRow[] = [];
+  const [plans, entitlement, generations, scrapes] = await Promise.all([
+    listPlans({ data: undefined }).catch(() => []),
+    getEntitlement({ userId: user.id }).catch(() => null),
+    listJobs({ data: {} }).catch(() => []),
+    listScrapes({ data: {} }).catch(() => []),
+  ])
 
-/** Remaining credits for a kind; null = unlimited. Mirrors `remainingFor` in
- *  `src/lib/plans.ts`, inlined so this route does not pull that module's
- *  InsForge client into the client bundle. */
-function remainingFor(ent: Entitlement, catalogue: Plan[], kind: "designmd" | "scrape"): number | null {
-  const plan = catalogue.find((p) => p.plan === ent.plan);
-  const quota = kind === "designmd" ? plan?.designmd_quota : plan?.scrape_quota;
-  if (quota == null) return null;
-  const used = kind === "designmd" ? ent.designmd_used : ent.scrape_used;
-  return Math.max(0, quota - used);
+  const plan = plans.find((p) => p.plan === entitlement?.plan) ?? null
+  const timestamps = [
+    ...generations.map((g) => new Date(g.createdAt).toISOString()),
+    ...scrapes.map((s) => new Date(s.createdAt).toISOString()),
+  ].sort((a, b) => new Date(b).getTime() - new Date(a).getTime())
+
+  return {
+    identity: { id: user.id, email: user.email, name: user.name },
+    planLabel: plan?.label ?? "Free",
+    plan,
+    used: {
+      designmd: entitlement?.designmdUsed ?? 0,
+      scrape: entitlement?.scrapeUsed ?? 0,
+    },
+    remaining: {
+      designmd: entitlement?.designmd.remaining ?? 0,
+      scrape: entitlement?.scrape.remaining ?? 0,
+    },
+    templateOpen: plan?.templates_unlocked ?? false,
+    activity: {
+      generations: generations.length,
+      scrapes: scrapes.length,
+      latest: timestamps[0] ?? null,
+    },
+  }
 }
-
-/** Mirrors `templatesUnlocked` in `src/lib/plans.ts`, same reason. */
-function templatesUnlocked(ent: Entitlement, catalogue: Plan[]): boolean {
-  return catalogue.find((p) => p.plan === ent.plan)?.templates_unlocked ?? false;
-}
-
 
 export function SettingPage() {
-  const navigate = useNavigate();
+  const data = Route.useLoaderData()
+  const navigate = useNavigate()
+  const { identity, planLabel, plan, used, remaining, templateOpen, activity } = data
 
   // The Next version posted to a `signOut` server action. `src/auth/client.ts`
   // already exports the Better Auth equivalent; see `site-header.tsx`.
@@ -67,13 +96,6 @@ export function SettingPage() {
     await signOut();
     void navigate({ to: "/" });
   }, [navigate]);
-
-  const plan = plans.find((p) => p.plan === entitlement.plan);
-  const name = user.name;
-  const designRemaining = remainingFor(entitlement, plans, "designmd");
-  const scrapeRemaining = remainingFor(entitlement, plans, "scrape");
-  const templateOpen = templatesUnlocked(entitlement, plans);
-  const latest = latestActivity(generations, scrapes);
 
   return (
     <>
@@ -96,10 +118,10 @@ export function SettingPage() {
                 <span className="grid size-12 place-items-center rounded-buttons border border-ink bg-lime-sprint shadow-hard">
                   <UserCircle size={25} weight="fill" aria-hidden="true" />
                 </span>
-                <h2 className="mt-4 text-title font-semibold text-ink">{name}</h2>
-                <p className="mt-1 truncate text-body-sm text-muted">{user.email}</p>
+                <h2 className="mt-4 text-title font-semibold text-ink">{identity.name}</h2>
+                <p className="mt-1 truncate text-body-sm text-muted">{identity.email}</p>
                 <p className="mt-3 break-all rounded-buttons border border-rule bg-paper-white px-3 py-2 text-caption text-muted-gray">
-                  {user.id}
+                  {identity.id}
                 </p>
                 <Link to="/profile" className="pressable mt-5 inline-flex h-11 items-center gap-2 rounded-buttons border border-ink bg-paper-white px-4 text-body-sm font-medium text-ink shadow-hard">
                   Edit profile <ArrowRight size={15} weight="bold" aria-hidden="true" />
@@ -129,17 +151,17 @@ export function SettingPage() {
                     <span className="inline-flex items-center gap-2 text-caption font-semibold uppercase tracking-[0.08em] text-muted-gray">
                       <GearSix size={15} weight="fill" aria-hidden="true" /> Paket & kredit
                     </span>
-                    <h2 className="mt-3 text-title font-semibold text-ink">Paket {plan?.label ?? "Free"}</h2>
+                    <h2 className="mt-3 text-title font-semibold text-ink">Paket {planLabel}</h2>
                     <p className="mt-2 max-w-xl text-body-sm leading-7 text-muted">
                       Kredit dipakai langsung saat generate/scrape berhasil dimulai. Upgrade reset pemakaian paket.
                     </p>
                   </div>
-                  <CreditBadge planLabel={plan?.label ?? "Free"} design={designRemaining} scrape={scrapeRemaining} />
+                  <CreditBadge planLabel={planLabel} design={remaining.designmd} scrape={remaining.scrape} />
                 </div>
 
                 <div className="mt-6 grid gap-4 sm:grid-cols-3">
-                  <QuotaCard title="DESIGN.md" used={entitlement.designmd_used} quota={plan?.designmd_quota ?? null} />
-                  <QuotaCard title="Scrape HTML" used={entitlement.scrape_used} quota={plan?.scrape_quota ?? null} />
+                  <QuotaCard title="DESIGN.md" used={used.designmd} quota={plan?.designmd_quota ?? null} />
+                  <QuotaCard title="Scrape HTML" used={used.scrape} quota={plan?.scrape_quota ?? null} />
                   <div className="rounded-cards border border-rule bg-cream p-4">
                     <p className="text-caption font-semibold uppercase tracking-[0.08em] text-muted-gray">Template</p>
                     <p className="mt-2 flex items-center gap-2 text-body-sm font-semibold text-ink">
@@ -162,11 +184,11 @@ export function SettingPage() {
                   <Clock size={15} weight="fill" aria-hidden="true" /> Aktivitas
                 </span>
                 <div className="mt-5 grid gap-4 sm:grid-cols-3">
-                  <Stat label="Generate" value={generations.length} helper="DESIGN.md tersimpan" />
-                  <Stat label="Scrape" value={scrapes.length} helper="HTML tersimpan" />
+                  <Stat label="Generate" value={activity.generations} helper="DESIGN.md tersimpan" />
+                  <Stat label="Scrape" value={activity.scrapes} helper="HTML tersimpan" />
                   <div className="rounded-cards border border-rule bg-paper-white p-4">
                     <p className="text-caption font-semibold uppercase tracking-[0.08em] text-muted-gray">Terakhir aktif</p>
-                    <p className="mt-2 text-body-sm font-semibold text-ink">{latest ? formatDate(latest) : "Belum ada aktivitas"}</p>
+                    <p className="mt-2 text-body-sm font-semibold text-ink">{activity.latest ? formatDate(activity.latest) : "Belum ada aktivitas"}</p>
                   </div>
                 </div>
                 <Link to="/history" className="pressable mt-6 inline-flex h-11 items-center gap-2 rounded-buttons border border-ink bg-paper-white px-5 text-body-sm font-semibold text-ink shadow-hard">
@@ -204,15 +226,6 @@ function Stat({ label, value, helper }: { label: string; value: number; helper: 
       <p className="mt-1 text-caption text-muted-gray">{helper}</p>
     </div>
   );
-}
-
-function latestActivity(
-  generations: { created_at: string }[],
-  scrapes: { created_at: string }[],
-): string | null {
-  const latest = [...generations.map((g) => g.created_at), ...scrapes.map((s) => s.created_at)]
-    .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0];
-  return latest ?? null;
 }
 
 function formatDate(value: string) {

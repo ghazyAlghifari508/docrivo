@@ -31,6 +31,7 @@ export const Route = createFileRoute("/")({
     const url = typeof search.url === "string" ? search.url : undefined
     return url === undefined ? {} : { url }
   },
+  loader: loadHome,
   head: () => ({
     meta: [
       { title: "Docrivo - Website jadi DESIGN.md untuk AI coding" },
@@ -44,20 +45,39 @@ export const Route = createFileRoute("/")({
   component: HomePage,
 })
 
-function HomePage() {
-  // TODO(Task 4.3): resolve the real session user here -- the deleted version
-  // awaited `getUser()` from `src/lib/dal`, which Task 3.1 removed. Until the
-  // root loader lands (Task 7.3) this page always renders as a signed-out
-  // visitor: no `CreditBadge`, and `HomeGenerator` in guest mode.
-  const user = null
+import { listPlans } from "~/queries/plans"
+import { getEntitlement } from "~/queries/entitlements"
+import { getProfile } from "~/queries/profile"
 
-  // TODO(Task 4.3): `getPlans()` and `getEntitlement(user.id)` from
-  // `src/lib/plans.ts` are InsForge RPCs, and Task 4.3 replaces them with the
-  // `listPlans` / `getEntitlement` server functions. The zeros below are the
-  // same values the deleted page used for a signed-out visitor.
-  const planLabel = ""
-  const remainingDesign: number | null = 0
-  const remainingScrape: number | null = 0
+/**
+ * The signed-in visitor's plan and remaining credits, read through the
+ * entitlement server functions. A signed-out visitor gets `null` from
+ * `getProfile`, and the page then renders exactly the state the deleted version
+ * rendered for one: no credit badge, and the generator in guest mode.
+ *
+ * Both reads are wrapped because this is the landing page -- a database blip on
+ * `/` should not take the whole front door down with it.
+ */
+async function loadHome() {
+  const user = await getProfile({ data: undefined }).catch(() => null)
+  if (!user) return { authed: false, planLabel: "", remainingDesign: 0, remainingScrape: 0 }
+
+  const [plans, entitlement] = await Promise.all([
+    listPlans({ data: undefined }).catch(() => []),
+    getEntitlement({ userId: user.id }).catch(() => null),
+  ])
+
+  const label = plans.find((p) => p.plan === entitlement?.plan)?.label ?? ""
+  return {
+    authed: true,
+    planLabel: label,
+    remainingDesign: entitlement?.designmd.remaining ?? 0,
+    remainingScrape: entitlement?.scrape.remaining ?? 0,
+  }
+}
+
+function HomePage() {
+  const { authed, planLabel, remainingDesign, remainingScrape } = Route.useLoaderData()
 
   return (
     <>
@@ -71,7 +91,7 @@ function HomePage() {
 
           <div className="page-shell relative w-full py-20 text-center">
             <Reveal className="mx-auto flex max-w-3xl flex-col items-center">
-              {user ? (
+              {authed ? (
                 <div className="mb-6">
                   <CreditBadge planLabel={planLabel} design={remainingDesign} scrape={remainingScrape} />
                 </div>
@@ -90,7 +110,7 @@ function HomePage() {
 
             <Reveal delay={120} className="mx-auto mt-10 w-full">
               <HomeGenerator
-                authed={!!user}
+                authed={authed}
                 remainingDesign={remainingDesign}
                 remainingScrape={remainingScrape}
               />

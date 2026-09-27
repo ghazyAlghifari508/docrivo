@@ -1,6 +1,11 @@
 // Midtrans Snap (sandbox) via REST — no midtrans-client dep, redirect flow so
 // no Snap.js needed. Verification is poll-based (getTransactionStatus), so no
 // webhook/tunnel is required for localhost.
+//
+// This is the only payment integration in the repository and it is server-only:
+// the server key never leaves the process, and nothing here may be imported by a
+// component. `createSnapTransaction` is reached through the `createPayment`
+// server function in `src/queries/entitlements.ts`.
 
 // Set MIDTRANS_PRODUCTION=true in prod env to hit live endpoints. Default sandbox.
 const IS_PROD = process.env.MIDTRANS_PRODUCTION === "true";
@@ -22,7 +27,12 @@ function authHeader() {
 }
 
 function appUrl() {
-  return process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  // `APP_URL` is what the rest of the app reads -- `src/auth/server.ts` builds
+  // its OAuth callback from it. The `NEXT_PUBLIC_` prefix was a Next.js
+  // convention and this is no longer Next; `NEXT_PUBLIC_APP_URL` stays as a
+  // fallback so a deployment that sets only the old name still redirects to the
+  // right place after payment.
+  return process.env.APP_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 }
 
 export async function createSnapTransaction(opts: {

@@ -1,14 +1,15 @@
 import { createFileRoute } from "@tanstack/react-router"
 export const Route = createFileRoute("/admin")({
-  // AUTH NOT ENFORCED, and this is the most serious of the six. The deleted page
-  // called `requireAdmin()` from `src/lib/dal` (removed in Task 3.1), which
-  // redirected unauthenticated visitors and threw `notFound()` for anyone not on
-  // the `ADMIN_EMAILS` allowlist. The replacement for the second half already
-  // exists -- `requireAdmin` in `src/auth/admin.ts` -- but it needs a session
-  // user, and the only session source for pages is the root loader that Task 7.3
-  // adds. Until then `/admin` is reachable by anyone, so treat this route as
-  // unfinished rather than as shipped: the table below is empty and the gate
-  // must land before this route is exposed.
+  // GATED, and the gate is the router's not-found payload. `listRecentJobs`
+  // calls `requireAdmin` before it reads anything, so an unauthenticated request
+  // or one from an address that is not on the `ADMIN_EMAILS` allowlist never
+  // reaches the query -- and both get the same not-found answer, because a 403
+  // would confirm that `/admin` exists.
+  //
+  // Task 7.3 adds the root loader that resolves the session once per request.
+  // Until then the gate lives in the server function, which is the only place
+  // that can reach the session without a client-environment import.
+  loader: loadAdmin,
   head: () => ({
     meta: [
       { title: "Admin - Docrivo" },
@@ -23,21 +24,17 @@ export const Route = createFileRoute("/admin")({
 
 import { SiteHeader } from "~/components/site-header";
 import { SiteFooter } from "~/components/site-footer";
+import { listRecentJobs } from "~/queries/jobs";
 
-type AdminJob = {
-  id: string;
-  source_url: string;
-  status: string;
-  error_code: string | null;
-  pages_analyzed: number;
-};
-
-// TODO(Task 4.1 + Task 6.1): the deleted page read the 30 most recent jobs with
-// an unscoped `insforge.select("generation_jobs", ...)`. Task 4.1's `listJobs`
-// is user-scoped, so the admin view needs an unscoped counterpart that also runs
-// after `requireAdmin`; Task 6.1 removes the InsForge client this used. No
-// replacement query exists yet, so the list is empty rather than wrong.
-const jobs: AdminJob[] = [];
+/**
+ * The 30 most recent jobs across every user -- the unscoped read the deleted
+ * page did with an InsForge client. `readRecentJobs` is unscoped by necessity,
+ * so the `requireAdmin` inside `listRecentJobs` is the only thing standing
+ * between this table and anyone who guesses the URL.
+ */
+async function loadAdmin() {
+  return { jobs: await listRecentJobs({ data: { limit: 30 } }) }
+}
 
 const OK = new Set(["completed"]);
 const BAD = new Set(["failed", "cancelled"]);
@@ -53,6 +50,7 @@ const LABEL: Record<string, string> = {
 };
 
 export function AdminPage() {
+  const { jobs } = Route.useLoaderData()
   const completed = jobs.filter((j) => OK.has(j.status)).length;
   const failed = jobs.filter((j) => BAD.has(j.status)).length;
   const running = jobs.length - completed - failed;
@@ -104,10 +102,10 @@ export function AdminPage() {
                           <StatusBadge status={j.status} />
                         </td>
                         <td className="max-w-[420px] break-all p-4 font-medium">
-                          {j.source_url}
+                          {j.sourceUrl}
                         </td>
-                        <td className="p-4 text-right tabular-nums">{j.pages_analyzed}</td>
-                        <td className="p-4 text-muted-gray">{j.error_code ? "Perlu dicoba lagi" : "-"}</td>
+                        <td className="p-4 text-right tabular-nums">{j.pagesAnalyzed}</td>
+                        <td className="p-4 text-muted-gray">{j.errorCode ? "Perlu dicoba lagi" : "-"}</td>
                       </tr>
                     ))
                   )}

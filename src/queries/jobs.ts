@@ -8,8 +8,10 @@ import {
   generatedDocuments,
   generationJobs,
 } from "~/db/schema"
+import { requireAdmin } from "~/auth/admin"
 import { ERROR_CODES, failure, type ActionResult } from "~/lib/errors"
 import { validateUrl } from "~/lib/url-validator"
+import { consumeQuota, refundQuota } from "./entitlements"
 import { checkRateLimit } from "./rate-limit"
 
 export type Job = typeof generationJobs.$inferSelect
@@ -196,6 +198,66 @@ export async function readJobDocument(jobId: string, client: DbClient = db) {
 }
 
 /**
+ * The admin view's read: the most recent jobs across every user.
+ *
+ * Unscoped by design and by necessity -- `readJobList` is scoped to one user,
+ * which is the whole point of it, and the admin table is the one place that has
+ * to see other people's rows. That makes this the one function in the file that
+ * is not an authorisation boundary on its own, so it carries no user id and no
+ * session: the caller must have run `requireAdmin` first. `listRecentJobs` is
+ * the server-function form and resolves the session itself.
+ *
+ * It is a projection, not whole rows, for the same reason the scrape list is:
+ * the table shows a URL, a status, a page count and an error code.
+ */
+export type AdminJob = {
+  id: string
+  sourceUrl: string
+  status: string
+  errorCode: string | null
+  pagesAnalyzed: number
+}
+
+export async function readRecentJobs(
+  input: { limit?: number },
+  client: DbClient = db,
+): Promise<AdminJob[]> {
+  return client
+    .select({
+      id: generationJobs.id,
+      sourceUrl: generationJobs.sourceUrl,
+      status: generationJobs.status,
+      errorCode: generationJobs.errorCode,
+      pagesAnalyzed: generationJobs.pagesAnalyzed,
+    })
+    .from(generationJobs)
+    .orderBy(desc(generationJobs.createdAt))
+    .limit(input.limit ?? 30)
+}
+
+/**
+ * The admin view's read, as a server function.
+ *
+ * The gate lives here rather than in the route's loader, for two reasons. It
+ * has to: `readRecentJobs` is unscoped, so nothing below this line authorises
+ * anything. And a route loader runs in the client graph too, where the Start
+ * plugin's import protection refuses `@tanstack/react-start/server` -- resolving
+ * the session from a loader would need that import. Inside a server function's
+ * handler the session is already in the middleware context, and the handler is
+ * extracted to the server.
+ *
+ * `requireAdmin` raises the router's not-found payload for both a missing
+ * session and an address that is not on the allowlist, so neither reveals that
+ * `/admin` exists.
+ */
+export const listRecentJobs = createServerFn({ method: "GET" })
+  .validator((input: { limit?: number }) => input ?? {})
+  .handler(async ({ data, context }) => {
+    requireAdmin(context.user ? { email: context.user.email } : null)
+    return readRecentJobs({ limit: data.limit ?? 30 })
+  })
+
+/**
  * `userId` is resolved from the middleware context, never from the payload.
  *
  * The Phase 3 stub took `{ jobId, userId }` as its validator input. That would
@@ -301,15 +363,30 @@ export const createGeneration = createServerFn({ method: "POST" })
         return failure("INVALID_URL", ERROR_CODES.INVALID_URL)
       }
 
-      const job = await insertGeneration({
-        userId: user.id,
-        sourceUrl,
-        normalizedDomain,
-        maxPages: data.maxPages,
-        outputLanguage: data.outputLanguage,
-      })
+      // The credit gate. `consume_quota` locks the entitlement row and only
+      // increments if the plan's quota has room, so two clicks cannot both pass.
+      // It sits after the URL check on purpose: an unusable URL must not cost a
+      // credit.
+      const quota = await consumeQuota({ userId: user.id, kind: "designmd" })
+      if (!quota.allowed) {
+        return failure("QUOTA_EXCEEDED", ERROR_CODES.QUOTA_EXCEEDED)
+      }
 
-      return { ok: true, jobId: job.id, status: job.status }
+      try {
+        const job = await insertGeneration({
+          userId: user.id,
+          sourceUrl,
+          normalizedDomain,
+          maxPages: data.maxPages,
+          outputLanguage: data.outputLanguage,
+        })
+        return { ok: true, jobId: job.id, status: job.status }
+      } catch (error) {
+        // The credit is spent and no job exists, so give it back. `refund_quota`
+        // is idempotent and clamps at zero, so a repeat is harmless.
+        await refundQuota({ userId: user.id, kind: "designmd" }).catch(() => undefined)
+        throw error
+      }
     },
   )
 

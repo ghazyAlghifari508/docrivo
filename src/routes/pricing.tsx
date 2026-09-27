@@ -6,6 +6,7 @@ export const Route = createFileRoute("/pricing")({
     const order_id = typeof search.order_id === "string" ? search.order_id : undefined
     return order_id === undefined ? {} : { order_id }
   },
+  loader: loadPricing,
   head: () => ({
     meta: [
       { title: "Pricing - Docrivo" },
@@ -19,6 +20,8 @@ import { SiteHeader } from "~/components/site-header";
 import { SiteFooter } from "~/components/site-footer";
 import { PricingCards } from "~/components/pricing-cards";
 import { PaymentVerifier } from "~/components/payment-verifier";
+import { listPlans } from "~/queries/plans";
+import { getProfile } from "~/queries/profile";
 
 type Plan = {
   plan: string;
@@ -30,6 +33,31 @@ type Plan = {
   sort_order: number;
 };
 
+/**
+ * The catalogue comes from `public.list_plans()` through the `listPlans` server
+ * function, and the current plan from the session -- neither from a constant.
+ * The static fallback below is kept only for a signed-out visitor whose first
+ * read fails, and it carries the same three paid plans the database seeds, so
+ * the page still renders something buyable-shaped if the catalogue is
+ * unreachable.
+ */
+async function loadPricing() {
+  const [plans, user] = await Promise.all([
+    listPlans({ data: undefined }).catch(() => [] as Plan[]),
+    getProfile({ data: undefined }).catch(() => null),
+  ])
+
+  return {
+    plans: plans.length > 0 ? plans : DEFAULT_PLANS,
+    currentPlan: user ? await currentPlanOf(user.id) : "free",
+  }
+}
+
+async function currentPlanOf(userId: string): Promise<string> {
+  const { getEntitlement } = await import("~/queries/entitlements");
+  return (await getEntitlement({ userId })).plan;
+}
+
 const DEFAULT_PLANS: Plan[] = [
   { plan: "free", label: "Free", designmd_quota: 3, scrape_quota: 5, templates_unlocked: false, price_idr: 0, sort_order: 0 },
   { plan: "starter", label: "Starter", designmd_quota: 10, scrape_quota: 20, templates_unlocked: true, price_idr: 49000, sort_order: 1 },
@@ -38,16 +66,8 @@ const DEFAULT_PLANS: Plan[] = [
 
 
 export function PricingPage() {
-  // TODO(Task 4.3): `getPlans()` came from `src/lib/plans.ts` and was an
-  // InsForge RPC against `list_plans`. Task 4.3 adopts that module and replaces
-  // the RPC with a `listPlans` server function. Until then the catalogue is the
-  // static fallback the deleted page already shipped for an empty result, so
-  // /pricing renders but always shows the free plan as current.
-  const plans: Plan[] = DEFAULT_PLANS;
-  const plansData = plans.length ? plans : DEFAULT_PLANS;
-  const plan = plansData[0];
-  const planSlug = plan?.plan ?? "free";
-  const { order_id } = Route.useSearch();
+  const { plans, currentPlan } = Route.useLoaderData()
+  const { order_id } = Route.useSearch()
 
   return (
     <>
@@ -65,7 +85,7 @@ export function PricingPage() {
           </p>
 
           <div className="mx-auto mt-10 max-w-4xl">
-            <PricingCards plans={plansData} currentPlan={planSlug} />
+            <PricingCards plans={plans} currentPlan={currentPlan} />
           </div>
         </section>
       </main>
