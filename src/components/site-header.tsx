@@ -1,6 +1,6 @@
 "use client";
 
-import { useNavigate, Link } from "@tanstack/react-router";
+import { useNavigate, useRouteContext, Link } from "@tanstack/react-router";
 import { useCallback } from "react";
 import {
   ArrowRight,
@@ -8,7 +8,7 @@ import {
   SignOut,
   UserCircle,
 } from "@phosphor-icons/react";
-import { signOut, useSession } from "~/auth/client";
+import { signOut } from "~/auth/client";
 
 const PUBLIC_NAV = [
   ["Home", "/"],
@@ -27,23 +27,31 @@ const USER_NAV = [
 /**
  * Props are unchanged (`surface` only).
  *
- * Behaviour change, and it is not optional. The deleted version was an async
- * server component that called `getUser()` from `src/lib/dal`, which Task 3.1
- * removed along with the whole InsForge data layer. The replacement reads the
- * session from `authClient` on the client instead, so the server-rendered HTML
- * shows the public nav and the user nav appears after hydration. That flash is
- * the price of not having a session query yet: Task 5.1 adds the TanStack Query
- * option factories and Task 7.3 moves session resolution into the root loader,
- * and at that point this hook is replaced by the loader's data and the flash
- * goes away. Do not "fix" it by re-adding a server-side session call here --
- * that is exactly the per-request session cost Task 7.3 exists to remove.
+ * The session comes from the root route's `beforeLoad`, not from
+ * `authClient.useSession()`. That is what removes the flash this component used
+ * to have: `useSession` resolves after hydration, so the server-rendered HTML
+ * showed the public nav and the signed-in nav appeared a moment later, which is
+ * a visible wrong answer on every page load for every signed-in user.
+ *
+ * It is also the last per-request double lookup. The session was being resolved
+ * once by `authMiddleware` for the root `beforeLoad`, and then again by this
+ * component's own `useSession` fetch. Reading the value the root already put in
+ * context is free.
+ *
+ * Do not "fix" this by adding a server-side session call to this component --
+ * that is the cost the root `beforeLoad` exists to pay once. If a component
+ * needs the session, take it from the route context: `useRouterState` or the
+ * route's own `Route.useRouteContext()`.
  */
 export function SiteHeader({
   surface = "paper",
 }: {
   surface?: "paper" | "cream" | "depth";
 }) {
-  const { data: session } = useSession();
+  // `from: "__root__"` because this component is rendered by many routes, none of
+  // which owns the session. The root `beforeLoad` result is inherited by every
+  // descendant, so this is the same object the route guards read.
+  const { session } = useRouteContext({ from: "__root__" })
   const navigate = useNavigate();
   const user = session?.user ?? null;
   const nav = user ? USER_NAV : PUBLIC_NAV;

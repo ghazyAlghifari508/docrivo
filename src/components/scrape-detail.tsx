@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, CircleNotch, Code, DownloadSimple, GlobeHemisphereWest, Warning } from "@phosphor-icons/react";
 import { scrapeQueryOptions } from "~/lib/queries/scrape";
+import { CollapsibleOutput } from "~/components/collapsible-output";
 
 type ResultView = "preview" | "code";
 
@@ -88,66 +89,71 @@ export function ScrapeDetail({ id }: { id: string }) {
   const viewport = `${item.metadata.viewport.width}×${item.metadata.viewport.height}`;
 
   return (
-    <main id="main" className="bg-paper-white">
-      <section className="bg-depth text-paper-white">
-        <div className="page-shell py-10">
-          <Link to="/history" className="inline-flex items-center gap-2 text-caption font-medium text-paper-white/70 hover:text-paper-white">
-            <ArrowLeft size={15} aria-hidden="true" /> History
-          </Link>
-          <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_320px] lg:items-end">
-            <div>
-              <span className="inline-flex rounded-pills border border-lime-sprint bg-lime-sprint/15 px-3 py-1.5 text-caption font-medium uppercase tracking-[0.06em] text-lime-sprint">
-                Scrape HTML
-              </span>
-              <h1 className="mt-5 max-w-2xl text-heading-lg font-semibold leading-heading-lg tracking-heading-lg">
-                Preview dan code hasil scrape.
-              </h1>
-              <p className="mt-4 flex items-center gap-2 break-all text-body-sm text-paper-white/60">
-                <GlobeHemisphereWest size={16} className="shrink-0" aria-hidden="true" /> {item.sourceUrl}
-              </p>
-            </div>
-            <dl className="grid gap-3 rounded-cards border border-paper-white/15 bg-paper-white/5 p-5 text-caption text-paper-white/70">
-              <MetaItem label="Attempt" value={`#${item.metadata.attempt} · ${item.metadata.captureMode}`} />
-              <MetaItem label="Viewport" value={viewport} />
-              <MetaItem label="Diambil" value={captured} />
-              <MetaItem label="HTML" value={`${sizeKb} KB`} />
-            </dl>
-          </div>
-        </div>
-      </section>
-
-      <section className="page-shell py-8">
-        <div className="overflow-hidden rounded-cards border border-ink bg-cream text-left shadow-hard">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-ink bg-paper-white p-3">
-            <span className="inline-flex min-w-0 items-center gap-2 break-all text-caption font-medium text-muted">
-              <Code size={15} aria-hidden="true" /> {item.metadata.finalUrl}
-            </span>
-            <div className="flex flex-wrap items-center gap-2">
-              <div aria-label="Tampilan hasil HTML" className="inline-flex rounded-buttons border border-ink bg-cream p-1">
-                <ViewButton active={view === "preview"} onClick={() => setView("preview")}>Preview</ViewButton>
-                <ViewButton active={view === "code"} onClick={() => setView("code")}>Code</ViewButton>
+    <CollapsibleOutput
+      label="Hasil scrape HTML"
+        summary={`${sizeKb} KB · ${viewport}`}
+      >
+      <main id="main" className="bg-paper-white">
+        <section className="bg-depth text-paper-white">
+          <div className="page-shell py-10">
+            <Link to="/history" className="inline-flex items-center gap-2 text-caption font-medium text-paper-white/70 hover:text-paper-white">
+              <ArrowLeft size={15} aria-hidden="true" /> History
+            </Link>
+            <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_320px] lg:items-end">
+              <div>
+                <span className="inline-flex rounded-pills border border-lime-sprint bg-lime-sprint/15 px-3 py-1.5 text-caption font-medium uppercase tracking-[0.06em] text-lime-sprint">
+                  Scrape HTML
+                </span>
+                <h1 className="mt-5 max-w-2xl text-heading-lg font-semibold leading-heading-lg tracking-heading-lg">
+                  Preview dan code hasil scrape.
+                </h1>
+                <p className="mt-4 flex items-center gap-2 break-all text-body-sm text-paper-white/60">
+                  <GlobeHemisphereWest size={16} className="shrink-0" aria-hidden="true" /> {item.sourceUrl}
+                </p>
               </div>
-              {blobUrl ? (
-                <a
-                  href={blobUrl}
-                  download="index.html"
-                  className="pressable inline-flex items-center gap-2 rounded-buttons border border-ink bg-lime-sprint px-3 py-2 text-caption font-medium text-ink shadow-hard"
-                >
-                  <DownloadSimple size={15} /> Download index.html
-                </a>
-              ) : null}
+              <dl className="grid gap-3 rounded-cards border border-paper-white/15 bg-paper-white/5 p-5 text-caption text-paper-white/70">
+                <MetaItem label="Attempt" value={`#${item.metadata.attempt} · ${item.metadata.captureMode}`} />
+                <MetaItem label="Viewport" value={viewport} />
+                <MetaItem label="Diambil" value={captured} />
+                <MetaItem label="HTML" value={`${sizeKb} KB`} />
+              </dl>
             </div>
           </div>
-          {view === "preview" ? (
-            <DesktopPreview title={`Preview ${item.sourceUrl}`} srcDoc={item.previewHtml} />
-          ) : (
-            <pre tabIndex={0} aria-label="Kode HTML hasil scrape" className="h-[calc(100dvh-150px)] min-h-[620px] overflow-auto bg-[#111] p-5 text-[12px] leading-5 text-paper-white">
-              <code>{item.html}</code>
-            </pre>
-          )}
-        </div>
-      </section>
-    </main>
+        </section>
+
+        <section className="page-shell py-8">
+          <div className="overflow-hidden rounded-cards border border-ink bg-cream text-left shadow-hard">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-ink bg-paper-white p-3">
+              <span className="inline-flex min-w-0 items-center gap-2 break-all text-caption font-medium text-muted">
+                <Code size={15} aria-hidden="true" /> {item.metadata.finalUrl}
+              </span>
+              <div className="flex flex-wrap items-center gap-2">
+                <div aria-label="Tampilan hasil HTML" className="inline-flex rounded-buttons border border-ink bg-cream p-1">
+                  <ViewButton active={view === "preview"} onClick={() => setView("preview")}>Preview</ViewButton>
+                  <ViewButton active={view === "code"} onClick={() => setView("code")}>Code</ViewButton>
+                </div>
+                {blobUrl ? (
+                  <a
+                    href={blobUrl}
+                    download="index.html"
+                    className="pressable inline-flex items-center gap-2 rounded-buttons border border-ink bg-lime-sprint px-3 py-2 text-caption font-medium text-ink shadow-hard"
+                  >
+                    <DownloadSimple size={15} /> Download index.html
+                  </a>
+                ) : null}
+              </div>
+            </div>
+            {view === "preview" ? (
+              <DesktopPreview title={`Preview ${item.sourceUrl}`} srcDoc={item.previewHtml} />
+            ) : (
+              <pre tabIndex={0} aria-label="Kode HTML hasil scrape" className="h-[calc(100dvh-150px)] min-h-[620px] overflow-auto bg-[#111] p-5 text-[12px] leading-5 text-paper-white">
+                <code>{item.html}</code>
+              </pre>
+            )}
+          </div>
+        </section>
+      </main>
+    </CollapsibleOutput>
   );
 }
 
