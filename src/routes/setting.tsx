@@ -1,10 +1,21 @@
 import { createFileRoute } from "@tanstack/react-router"
 export const Route = createFileRoute("/setting")({
-  // AUTH NOT ENFORCED. The deleted page called `requireUser()` from
-  // `src/lib/dal` (removed in Task 3.1) and redirected to /login. Task 7.3 adds
-  // the root loader that resolves the session once per request; that is where
-  // the `beforeLoad` guard belongs. Until then `loadSetting` resolves the
-  // identity itself and the page renders its signed-out state.
+  // GATED. The deleted page called `requireUser()` from `src/lib/dal` (removed in
+  // Task 3.1) and redirected to `/login`; this restores that.
+  //
+  // `beforeLoad` rather than the loader the Phase 3 stub used: it runs before the
+  // route's own work, and it runs on an in-app navigation as well as on a full
+  // page load. A loader that caught the 401 and rendered the signed-out state is
+  // a page that renders for anyone.
+  //
+  // This route reads more than the others -- plans, entitlement, job history and
+  // scrape history -- so it is the clearest case for the guard running first: four
+  // server functions that each need a session, none of which should be reached by
+  // a visitor who has none. The session itself is read from `context`, published
+  // once by the root route's `beforeLoad`.
+  beforeLoad: ({ context, location }) => {
+    requireSession(context, guardLocation(location))
+  },
   errorComponent: RouteError,
   notFoundComponent: RouteNotFound,
   loader: loadSetting,
@@ -24,6 +35,7 @@ import { CreditBadge } from "~/components/credit-badge";
 import { SiteHeader } from "~/components/site-header";
 import { SiteFooter } from "~/components/site-footer";
 import { signOut } from "~/auth/client";
+import { guardLocation, requireSession } from "~/auth/guard";
 import { RouteError, RouteNotFound } from "~/components/route-error";
 import { listJobs } from "~/queries/jobs";
 import { listScrapes } from "~/queries/scrapes";

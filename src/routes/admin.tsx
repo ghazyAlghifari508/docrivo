@@ -1,14 +1,27 @@
 import { createFileRoute } from "@tanstack/react-router"
 export const Route = createFileRoute("/admin")({
-  // GATED, and the gate is the router's not-found payload. `listRecentJobs`
-  // calls `requireAdmin` before it reads anything, so an unauthenticated request
-  // or one from an address that is not on the `ADMIN_EMAILS` allowlist never
-  // reaches the query -- and both get the same not-found answer, because a 403
-  // would confirm that `/admin` exists.
+  // GATED in two places, and the outer one is the point.
   //
-  // Task 7.3 adds the root loader that resolves the session once per request.
-  // Until then the gate lives in the server function, which is the only place
-  // that can reach the session without a client-environment import.
+  // `beforeLoad` runs on a full page load *and* on an in-app navigation, and it
+  // reads `context.session` -- published once by the root route's `beforeLoad`
+  // from a single server-function call. Task 3.3 recorded why the obvious
+  // alternative was not used: a `type: "request"` middleware's context reaches
+  // `beforeLoad` only server-side, so a guard built on it would enforce on a page
+  // load and silently no-op on in-app navigation. That is a guard that looks like
+  // a guard.
+  //
+  // `requireAdminSession` refuses with the router's not-found payload, so a
+  // signed-out visitor and a signed-in address that is not on `ADMIN_EMAILS` get
+  // the same answer -- and so does a URL that does not exist. A redirect to
+  // `/login` or a 403 would each confirm that `/admin` is real.
+  //
+  // The inner gate is `listRecentJobs`, which calls `requireAdmin` before it reads
+  // anything. Two is not redundancy for its own sake: the route guard stops the
+  // page rendering, and the server function is the only thing standing between
+  // the unscoped query and a caller who reaches it directly.
+  beforeLoad: ({ context }) => {
+    requireAdminSession(context)
+  },
   notFoundComponent: RouteNotFound,
   loader: loadAdmin,
   head: () => ({
@@ -26,6 +39,7 @@ export const Route = createFileRoute("/admin")({
 import { SiteHeader } from "~/components/site-header";
 import { SiteFooter } from "~/components/site-footer";
 import { RouteNotFound } from "~/components/route-error";
+import { requireAdminSession } from "~/auth/guard";
 import { listRecentJobs } from "~/queries/jobs";
 
 /**

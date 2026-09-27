@@ -1,10 +1,120 @@
+import { createServerFn } from "@tanstack/react-start"
 import { createMiddleware } from "@tanstack/react-start"
 import { getRequestHeaders } from "@tanstack/react-start/server"
 import { auth } from "./server"
+import type { Session, SessionUser } from "./guard"
 
-export async function resolveSession(requestHeaders: Headers) {
-  return auth.api.getSession({ headers: requestHeaders })
+/**
+ * Session resolution, and the per-request cache in front of it.
+ *
+ * ## Why a cache at all
+ *
+ * `authMiddleware` runs once per *server function*, not once per request, and a
+ * page load runs several: the root loader's `getSession`, plus whatever
+ * `listJobs`, `listScrapes` and `getEntitlement` the route's own loader calls. A
+ * page that called four of them performed four session lookups, each of which is
+ * a signed-cookie verification and a database read. That is F3, and it is a
+ * defect rather than a style point: it is per-request duplicated work on the
+ * hottest path in the application.
+ *
+ * ## Why it is keyed on the `Headers` object
+ *
+ * Because that object *is* the request. Read out of the installed
+ * `@tanstack/start-server-core`:
+ *
+ *     function getRequestHeaders() { return getH3Event().req.headers }
+ *
+ * and `requestHandler` builds exactly one `H3Event` per request and runs the
+ * whole handler inside `eventStorage.run({ h3Event }, ...)`. Every
+ * `getRequestHeaders()` call within one request therefore returns the *identical*
+ * `Headers` instance, and two concurrent requests have two different ones.
+ *
+ * So a `WeakMap<Headers, Promise<Session | null>>` is a per-request cache that
+ * cannot leak between requests, needs no AsyncLocalStorage of our own, and cannot
+ * outlive the request -- the entry is collected with the headers. The two
+ * alternatives both fail: a module-level variable serves one visitor's session to
+ * the next concurrent request, and a process-wide TTL cache does the same while
+ * additionally keeping a signed-out answer alive after sign-out.
+ *
+ * ## Why the *promise* is cached
+ *
+ * SSR matches a route tree in parallel, so a second server function starts before
+ * the first has answered. Caching the resolved value would find nothing in the map
+ * for the second caller and would still issue a lookup. Caching the pending promise
+ * collapses concurrent callers as well as sequential ones --
+ * `src/auth/session-cache.test.ts` asserts that case separately, because it is the
+ * one that a value cache would pass by accident on a single-threaded test.
+ *
+ * ## Why failures are cached too
+ *
+ * A rejected lookup is stored like any other answer. A request that retried would
+ * let the second caller succeed where the first failed, and the page would be
+ * assembled from two different answers -- which is a worse outcome than a single
+ * failed request, and much harder to read in a log.
+ */
+
+/** Resolves a session from a request's headers, or answers `null`. */
+export type SessionResolver = (headers: Headers) => Promise<Session | null>
+
+/**
+ * Keyed on the request's own `Headers`, so an entry is reachable only from the
+ * request that created it and is collectable the moment that request is done.
+ *
+ * A `Map` here would be a cross-request session leak with a memory leak on top.
+ */
+const perRequest = new WeakMap<Headers, Promise<Session | null>>()
+
+/**
+ * `resolveSession`, once per request.
+ *
+ * `resolve` is a parameter so the cache is testable without a session cookie, and
+ * so the count of database lookups is observable rather than inferred. It is not
+ * a seam for production: the only caller that omits it is `resolveSession`.
+ */
+export function cachedSession(
+  headers: Headers,
+  resolve: SessionResolver,
+): Promise<Session | null> {
+  const hit = perRequest.get(headers)
+  if (hit) return hit
+  const pending = resolve(headers)
+  perRequest.set(headers, pending)
+  return pending
 }
+
+const defaultResolver: SessionResolver = (headers) =>
+  auth.api.getSession({ headers }) as Promise<Session | null>
+
+/** The session for this request, or `null`. Resolved at most once per request. */
+export function resolveSession(
+  requestHeaders: Headers,
+  resolve: SessionResolver = defaultResolver,
+): Promise<Session | null> {
+  return cachedSession(requestHeaders, resolve)
+}
+
+/**
+ * The session, as a server function, for the root route's `beforeLoad`.
+ *
+ * A server function rather than a direct `resolveSession(getRequestHeaders())`
+ * call in the loader, and that is the whole trick. During SSR Start invokes a
+ * server function in-process, so the middleware context is populated and the
+ * lookup is the cached one; on the client it is an RPC to the same origin, which
+ * is what makes the guard work on an in-app navigation as well as on a full page
+ * load. A loader that reached for `getRequestHeaders()` directly would be a
+ * static import of `@tanstack/react-start/server` in the client graph, which the
+ * Start plugin's import protection refuses outright.
+ *
+ * It reads `context.user` rather than calling `resolveSession` again, so it adds
+ * no lookup of its own -- the middleware already resolved the session for the
+ * request, and reading the result is free.
+ */
+export const getSession = createServerFn({ method: "GET" }).handler(
+  async ({ context }): Promise<Session> => {
+    const user = context.user as SessionUser | null | undefined
+    return { user: user ?? null }
+  },
+)
 
 /**
  * Makes the session available to every server function. It does not decide

@@ -1,10 +1,21 @@
 import { createFileRoute } from "@tanstack/react-router"
 export const Route = createFileRoute("/profile")({
-  // AUTH NOT ENFORCED. The deleted page called `requireUser()` from
-  // `src/lib/dal` (removed in Task 3.1) and redirected to /login. Task 7.3 adds
-  // the root loader that resolves the session once per request; that is where
-  // the `beforeLoad` guard belongs. Until then `loadProfile` resolves the
-  // identity itself and renders the signed-out state rather than redirecting.
+  // GATED. The deleted page called `requireUser()` from `src/lib/dal` (removed in
+  // Task 3.1) and redirected to `/login`; this restores that.
+  //
+  // `beforeLoad` rather than the loader the Phase 3 stub used, for two reasons.
+  // It runs before the route's own work, so a signed-out visitor never causes a
+  // profile read. And it runs on an in-app navigation as well as on a full page
+  // load -- a loader that caught the 401 and rendered the signed-out state is a
+  // page that renders for anyone, which is what the `AUTH NOT ENFORCED` note this
+  // replaces used to be about.
+  //
+  // The session is read from `context`, published once by the root route's
+  // `beforeLoad`; nothing here resolves one, so a request that visits several
+  // guarded pages still performs a single lookup.
+  beforeLoad: ({ context, location }) => {
+    requireSession(context, guardLocation(location))
+  },
   // Optional keys: see the note in `index.tsx` on why a non-optional key here
   // would make `search` mandatory on every link to /profile.
   validateSearch: (
@@ -35,6 +46,7 @@ import { ArrowRight, CheckCircle, GearSix, SignOut, UserCircle, Warning } from "
 import { SiteHeader } from "~/components/site-header";
 import { SiteFooter } from "~/components/site-footer";
 import { signOut } from "~/auth/client";
+import { guardLocation, requireSession } from "~/auth/guard";
 import { RouteError, RouteNotFound } from "~/components/route-error";
 import { getProfile, updateProfile } from "~/queries/profile";
 

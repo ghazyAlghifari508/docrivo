@@ -1,10 +1,20 @@
 import { createFileRoute } from "@tanstack/react-router"
 export const Route = createFileRoute("/template")({
-  // AUTH NOT ENFORCED. The deleted page called `requireUser()` from
-  // `src/lib/dal` (removed in Task 3.1) and redirected to /login. Task 7.3 adds
-  // the root loader that resolves the session once per request; that is where
-  // the `beforeLoad` guard belongs. Until then the unlock is decided from the
-  // catalogue and the signed-in user's plan.
+  // GATED. The deleted page called `requireUser()` from `src/lib/dal` (removed in
+  // Task 3.1) and redirected to `/login`; this restores that.
+  //
+  // `beforeLoad` rather than the loader the Phase 3 stub used, so the guard fires
+  // on an in-app navigation as well as on a full page load, and before the
+  // entitlement read that decides whether the library is unlocked. The Phase 3
+  // version rendered the locked state to everyone instead, which was the safe
+  // direction but was not the behaviour: an unauthenticated visitor is turned
+  // away, and a subscriber sees their library.
+  //
+  // The session is read from `context`, published once by the root route's
+  // `beforeLoad`; nothing on this route resolves one.
+  beforeLoad: ({ context, location }) => {
+    requireSession(context, guardLocation(location))
+  },
   loader: loadTemplate,
   head: () => ({
     meta: [
@@ -18,6 +28,7 @@ export const Route = createFileRoute("/template")({
 import { SiteHeader } from "~/components/site-header";
 import { SiteFooter } from "~/components/site-footer";
 import { TemplateLock } from "~/components/template-lock";
+import { guardLocation, requireSession } from "~/auth/guard";
 import { listPlans } from "~/queries/plans";
 import { getEntitlement } from "~/queries/entitlements";
 import { getProfile } from "~/queries/profile";

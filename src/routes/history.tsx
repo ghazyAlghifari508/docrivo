@@ -1,12 +1,21 @@
 import { createFileRoute } from "@tanstack/react-router"
 export const Route = createFileRoute("/history")({
-  // AUTH NOT ENFORCED. `getGenerationHistory()` / `getScrapeHistory()` both
-  // called `requireUser()` in `src/lib/dal` (removed in Task 3.1), which
-  // redirected to /login before the list was ever built. Task 7.3 adds the root
-  // loader; that is where the `beforeLoad` guard belongs. Until then this route
-  // renders an empty list for anyone, which is what `loadHistory` below
-  // preserves: it treats an unauthenticated caller as "no rows" rather than
-  // turning the page into an error.
+  // GATED. `getGenerationHistory()` / `getScrapeHistory()` both called
+  // `requireUser()` in `src/lib/dal` (removed in Task 3.1), which redirected to
+  // /login before the list was ever built; this restores that.
+  //
+  // `beforeLoad` rather than the loader the Phase 3 stub used. The stub caught the
+  // 401 and rendered an empty list, which is a page that renders for anyone -- and
+  // an empty list is exactly what a user with no history sees, so the two are
+  // indistinguishable on screen. The guard also fires on an in-app navigation,
+  // which a loader-level 401 handler would not have covered without extra work.
+  //
+  // The session is read from `context`, published once by the root route's
+  // `beforeLoad`. This route then calls two server functions, and neither of them
+  // resolves a session of its own -- so the whole page is one lookup.
+  beforeLoad: ({ context, location }) => {
+    requireSession(context, guardLocation(location))
+  },
   loader: loadHistory,
   // `loadHistory` re-throws anything that is not a 401, so a database timeout
   // reaches this boundary instead of being flattened into an empty list.
@@ -25,6 +34,7 @@ import { SiteHeader } from "~/components/site-header";
 import { SiteFooter } from "~/components/site-footer";
 import { HistoryList } from "~/components/history-list";
 import { RouteError, RouteNotFound } from "~/components/route-error";
+import { guardLocation, requireSession } from "~/auth/guard";
 import { listJobs } from "~/queries/jobs";
 import { listScrapes } from "~/queries/scrapes";
 

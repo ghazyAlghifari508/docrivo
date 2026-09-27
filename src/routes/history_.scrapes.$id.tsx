@@ -10,9 +10,12 @@ import { ScrapeDetail } from "~/components/scrape-detail"
 // must NOT render inside `/history`'s element -- otherwise the History page's
 // own header and empty-state would wrap the scrape detail.
 export const Route = createFileRoute("/history_/scrapes/$id")({
-  // AUTH NOT ENFORCED. Same shape as `generations.$id.tsx`: the ownership check
-  // belonged to the `GET /api/scrapes/:id` handler that Task 3.1 deleted, and
-  // Task 4.2's `getScrape` restores it server-side.
+  // DELIBERATELY UNGUARDED, for the same reason as `generations.$id.tsx`: the
+  // ownership check belonged to the `GET /api/scrapes/:id` handler that Task 3.1
+  // deleted, and Task 4.2's `getScrape` restores it server-side with 404-not-403
+  // semantics. A route guard would add nothing to a check that already happens
+  // where the data is, and would turn "that scrape is not yours" into a redirect
+  // to /login for a visitor who is perfectly signed in.
   head: () => ({
     meta: [
       { title: "Scrape HTML - Docrivo" },

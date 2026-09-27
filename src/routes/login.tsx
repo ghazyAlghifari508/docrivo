@@ -3,6 +3,7 @@ import { GoogleLogo } from "@phosphor-icons/react"
 import { SiteHeader } from "~/components/site-header"
 import { SiteFooter } from "~/components/site-footer"
 import { authClient } from "~/auth/client"
+import { redirectSignedIn } from "~/auth/guard"
 import { safeNext } from "~/auth/redirect"
 
 /**
@@ -39,19 +40,27 @@ export function resolveLoginDestination(search: {
 }
 
 export const Route = createFileRoute("/login")({
-  // TODO(Task 7.3): the deleted page redirected an already-signed-in visitor to
-  // `/`. That needs the root loader's session; the `beforeLoad` guard belongs
-  // there rather than here, so /login currently renders for signed-in users too.
+  // The deleted page redirected an already-signed-in visitor to `/`, and so does
+  // this one. `beforeLoad` rather than a loader, so it fires on a full page load
+  // *and* on an in-app navigation, and before the page renders either way. The
+  // session comes from the root route's `beforeLoad` via `context`, so a signed-in
+  // visitor is turned away without a second lookup.
+  //
   // `safeNext` runs in `validateSearch` rather than at the call to
   // `authClient.signIn.social`, so a malicious `?next=` is discarded before it
   // can reach the OAuth callback URL. This is the defence the InsForge-era
-  // `safeNext()` provided.
+  // `safeNext()` provided, and the guard in `src/auth/guard.ts` applies the same
+  // function to the `next` it builds -- so the value is checked once on the way
+  // out and again on the way in.
   //
   // `next` is omitted from the returned object rather than set to `null` when
   // the guard rejects. Same outcome -- `resolveLoginDestination` treats an
   // absent key and an explicit `null` identically, and both mean the default --
   // but an optional key keeps `search` off the three `Link to="/login"` call
   // sites, which TanStack would otherwise force to pass `search={{ next: null }}`.
+  beforeLoad: ({ context }) => {
+    redirectSignedIn(context)
+  },
   validateSearch: (
     search: Record<string, unknown>,
   ): { next?: string; error?: string } => {
