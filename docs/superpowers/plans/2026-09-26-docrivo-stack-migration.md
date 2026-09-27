@@ -1665,7 +1665,13 @@ Record the `headers()` array verbatim. These move to the Start server config in 
 - [ ] **Step 3: Audit `server-only` usage in the preserved files**
 
 ```bash
-Select-String -Path src/lib/*.ts -Pattern 'from "server-only"'
+Select-String -Path src/lib/*.ts -Pattern 'server-only'
+
+> Correction, recorded after Task 3.1 ran: the pattern `from "server-only"`
+> matches **nothing** in this repo, because the imports are bare side-effect
+> imports (`import "server-only";`). Run literally it would have concluded "no
+> usage" and then broken six files via `npm uninstall server-only`. Use the
+> package name alone.
 ```
 
 For each hit, remove the import. The guard exists only to make Next throw when server code reaches the client bundle; it has no meaning outside Next, and keeping the dependency would violate the zero-trace constraint.
@@ -1739,8 +1745,18 @@ git commit -m "refactor: strip Next.js application, preserving pure-logic module
 **Files:**
 - Modify: `package.json`
 - Modify: `tsconfig.json`
+
+  Task 3.1 left two Next traces here, because it did not own the file: the
+  `plugins: [{ name: "next" }]` entry and the `.next/types` path in `include`.
+  Both must go in this task, or `tsc` will look for types that no longer exist.
 - Create: `vite.config.ts`
 - Create: `eslint.config.js` (rewrite)
+
+  **Careful: `eslint.config.mjs` already exists** and ESLint 9 loads *both*, so
+  creating a second file silently doubles every rule and the two can disagree.
+  Delete `eslint.config.mjs` in the same commit that adds `eslint.config.js`, or
+  rewrite the `.mjs` in place. Verify with `npx eslint --print-config src/start.ts`
+  that exactly one config is contributing.
 - Create: `src/routes/__root.tsx`
 - Create: `src/styles/globals.css` (moved from the deleted `src/app/globals.css`)
 - Modify: `.gitignore`
@@ -1925,7 +1941,7 @@ recognised key, report it. Do not ship an unverified registration.
 Recover `globals.css` from git, since Task 3.1 deleted it:
 
 ```bash
-git show HEAD~1:src/app/globals.css > src/styles/globals.css
+git show 5e8a00c7d7b6287e0e0b0f2ad6519041df4f989a:src/app/globals.css > src/styles/globals.css
 ```
 
 Preserve the `@theme` block exactly — it mirrors the generated design documents. Remove only Next-specific imports if any appear. Replace `@tailwindcss/postcss` usage with the `@import "tailwindcss";` directive that `@tailwindcss/vite` expects.
@@ -2022,7 +2038,15 @@ git commit -m "feat: scaffold TanStack Start with Vite, Tailwind v4, and TanStac
 
 **Done when:** `npm run dev` serves on 3000, `npm run typecheck` is clean, the 5 preserved tests pass, and no Next trace remains.
 
-### Task 3.3: Port the routes and components
+### Task 3.3
+
+> **Recover from `5e8a00c`, never from `HEAD~1`.** Task 3.1's commit is not the last
+> commit once Task 3.2 lands, so `HEAD~1` silently becomes the wrong tree and the
+> recovery yields a file that no longer exists. The pre-strip tree is pinned at
+> `5e8a00c7d7b6287e0e0b0f2ad6519041df4f989a` (46 paths under `src/app` + `src/components`: 14 `page.tsx`, 12
+> `route.ts`, 17 components, plus `layout.tsx`, `globals.css`, `favicon.ico`).
+> Verify it is still reachable before relying on it:
+> `git cat-file -t 5e8a00c` must print `commit`.: Port the routes and components
 
 **Files:**
 - Create: 15 route files under `src/routes/`
@@ -2031,14 +2055,14 @@ git commit -m "feat: scaffold TanStack Start with Vite, Tailwind v4, and TanStac
 - Test: `src/components/__tests__/ownership.test.ts`
 
 **Interfaces:**
-- Consumes: `authMiddleware` and `safeNext` from Tasks 2.2 and 2.3; the 17 components from git history at `HEAD~1:src/components/`
+- Consumes: `authMiddleware` and `safeNext` from Tasks 2.2 and 2.3; the 17 components from git history at `5e8a00c7d7b6287e0e0b0f2ad6519041df4f989a:src/components/`
 - Produces: the full route map and component set
 
 - [ ] **Step 1: Recover the components from git**
 
 ```bash
 New-Item -ItemType Directory -Force src/components
-git show HEAD~1:src/components/site-header.tsx > src/components/site-header.tsx
+git show 5e8a00c7d7b6287e0e0b0f2ad6519041df4f989a:src/components/site-header.tsx > src/components/site-header.tsx
 ```
 
 Repeat for all 17. They are framework-agnostic React and move unmodified.
@@ -2048,7 +2072,7 @@ Repeat for all 17. They are framework-agnostic React and move unmodified.
 For each of the 15 pages, read the original to extract its JSX, then rebuild it as a Start route. Example for `/faq`:
 
 ```bash
-git show HEAD~1:src/app/faq/page.tsx
+git show 5e8a00c7d7b6287e0e0b0f2ad6519041df4f989a:src/app/faq/page.tsx
 ```
 
 ```tsx
@@ -2548,11 +2572,27 @@ git commit -m "feat(storage): add filesystem screenshot storage and scrape serve
 
 ### Task 4.3: Entitlement, plan, and profile server functions
 
+> **Adopt two modules that Task 3.1 orphaned.** `src/lib/midtrans.ts` and
+> `src/lib/plans.ts` each have **zero importers** after the Next.js tree was
+> deleted, because their only callers were InsForge-era routes. They are not
+> dead code, and dropping them would silently delete the payment path:
+>
+> - `midtrans.ts` is the live Midtrans Snap integration — `createTransaction`,
+>   `getStatus`, server-key auth, sandbox-by-default with
+>   `MIDTRANS_PRODUCTION=true` to go live. It is the only payment integration in
+>   the repo. It is **not** in the plan's delete list, and it must not be.
+> - `plans.ts` holds the plan catalogue that `listPlans` serves.
+>
+> Read both before writing anything. If either turns out to be genuinely dead,
+> say so in your report rather than deleting it silently.
+
 **Files:**
 - Create: `src/queries/entitlements.ts`
 - Create: `src/queries/plans.ts`
 - Create: `src/queries/profile.ts`
 - Create: `src/queries/entitlements.test.ts`
+- Modify: `src/lib/midtrans.ts` (adopt; keep the redirect flow and sandbox default)
+- Modify: `src/lib/plans.ts` (adopt as the plan catalogue source)
 
 **Interfaces:**
 - Consumes: `db`, `schema` from Task 1.4
@@ -3007,6 +3047,13 @@ git commit -m "feat(query): add TanStack Query option factories with terminal-st
 
 ### Task 5.2: Collapse the polling components
 
+> **Adopt `src/lib/history.ts`.** It has zero importers after Task 3.1, but it
+> is the session-only store for active job and scrape IDs
+> (`docrivo:active:scrape:v1`) that the polling components read. Collapsing
+> those components onto `useQuery` is exactly when it gets a consumer again.
+> The "refresh starts clean, tab switching keeps state" intent is deliberate --
+> preserve it.
+
 **Files:**
 - Modify: `src/components/generation-result.tsx`
 - Modify: `src/components/history-list.tsx`
@@ -3104,6 +3151,14 @@ git commit -m "refactor(components): replace manual polling with TanStack Query"
 
 ## Phase 6 — InsForge removal
 
+
+> **`src/lib/retry.ts` is unowned and half-dead.** It retries transient infra
+> failures, but its documented trigger is InsForge's `PGRST002` schema-cache
+> reload, which no longer exists. Zero importers. Decide explicitly: if the
+> worker in this task still makes network calls that benefit, port the *retry
+> loop* and drop the InsForge prose; otherwise delete the file. Do not leave it
+> orphaned, and do not carry the PGRST002 comment forward as if it meant
+> something.
 ### Task 6.1: Delete the InsForge and Apify code paths
 
 **Files:**
@@ -3128,7 +3183,13 @@ Expected: a finite list. Every hit is either deleted or rewritten in the followi
 - [ ] **Step 2: Delete the InsForge data-layer modules**
 
 ```bash
-Remove-Item -Force src/lib/insforge-core.ts, src/lib/insforge.ts, src/lib/insforge-server.ts, src/lib/rate-limit.ts, src/lib/apify.ts
+Remove-Item -Force src/lib/insforge-core.ts, src/lib/insforge.ts, src/lib/rate-limit.ts, src/lib/apify.ts
+
+**`src/lib/insforge-server.ts` and `src/lib/dal.ts` are already gone** — Task 3.1
+deleted them three tasks early because both import `next/*` and the zero-trace gate
+could not pass while they remained. `Remove-Item` on a missing path throws in
+PowerShell 5.1, so the command above is written without them. Confirm with
+`Test-Path` before running, and do not "fix" the error by recreating them.
 ```
 
 `src/lib/dal.ts` is deleted too — its `getUser`/`requireUser`/`requireAdmin`/`getOwnedScrape` logic moves to `src/auth/middleware.ts` and `src/queries/`. Do not delete it until Tasks 4.1 through 4.3 have landed their replacements.
@@ -3189,7 +3250,25 @@ git commit -m "refactor: remove InsForge and Apify, port worker to Drizzle"
 
 **Done when:** no InsForge or Apify reference exists anywhere, the worker polls the local database, and the suite is green.
 
-### Task 6.2: Update scripts and documentation, then run the zero-trace gate
+### Task 6.2
+
+> **Three `next` matches are expected in the final tree. Do not "clean them up".**
+> Task 3.1's zero-trace check found 3 residual matches for a broad `next/` pattern,
+> and they are all deliberate:
+>
+> 1. `src/lib/render-page.ts:9` and 2. `src/lib/fetch-html.ts:72` — the word
+>    "Next" in prose comments explaining that previews render client-rendered
+>    sites. They are documentation, not dependencies.
+> 3. `src/lib/preview-html.test.ts` — a fixture containing `/_next/image?url=...`,
+>    asserted at line 14 to prove the preview rewriter proxies Next's image
+>    optimizer through the asset endpoint. **Deleting this deletes a security
+>    assertion.** It is the only thing pinning that rewrite.
+>
+> The gate that must be clean is the *dependency* pattern
+> (`from ['"]next|next\.config|require\(['"]next`) — measured at 0 hits across 33
+> files after Task 3.1. Prove that pattern is still live before trusting a green
+> result: run it against a file restored from `5e8a00c` and confirm it reports
+> hits.: Update scripts and documentation, then run the zero-trace gate
 
 **Files:**
 - Modify: `scripts/dev.js`
