@@ -251,6 +251,9 @@ export const generatedDocuments = pgTable(
       name: "generated_documents_user_id_fkey",
     }),
     index("generated_documents_job_id_idx").on(t.jobId),
+    // Retention, not a listing: `worker/retention.ts` deletes with no user
+    // predicate, so the index above cannot serve it. See `migrations/0012`.
+    index("generated_documents_created_at_idx").on(t.createdAt),
     index("idx_generated_documents_user_id").on(t.userId),
   ],
 )
@@ -323,6 +326,9 @@ export const scrapeArtifacts = pgTable(
       name: "scrape_artifacts_user_id_fkey",
     }).onDelete("cascade"),
     index("idx_scrape_artifacts_user_id").on(t.userId, t.createdAt.desc().nullsFirst()),
+    // Retention, not a listing. The index above leads with `user_id`, and the
+    // retention pass has no user, so it cannot use it at all.
+    index("scrape_artifacts_created_at_idx").on(t.createdAt),
   ],
 )
 

@@ -21,6 +21,7 @@ import {
   type JobStatusPatch,
 } from "./db";
 import { runPool, workerConcurrency } from "./pool";
+import { createRetentionSchedule, resolveRetention, runRetention } from "./retention";
 
 const POLL_MS = Number(process.env.WORKER_POLL_MS ?? 2000);
 const PORT = Number(process.env.PORT ?? 8080);
@@ -41,15 +42,26 @@ const PORT = Number(process.env.PORT ?? 8080);
  */
 const CONCURRENCY = workerConcurrency(process.env);
 const LEASE_REFRESH_MS = Number(process.env.WORKER_LEASE_REFRESH_MS ?? 60_000);
+const RETENTION_INTERVAL_MS = Number(process.env.RETENTION_INTERVAL_MS ?? 60 * 60_000);
 
 export async function main() {
   serveHttp();
   let backoff = POLL_MS;
+  const retention = createRetentionSchedule({
+    intervalMs: RETENTION_INTERVAL_MS,
+    now: () => new Date(),
+    run: () => runRetention({ ...resolveRetention(process.env), now: new Date() }),
+  });
   console.log(
-    `[worker] polling every ${POLL_MS}ms, up to ${CONCURRENCY} job(s) at a time`,
+    `[worker] polling every ${POLL_MS}ms, up to ${CONCURRENCY} job(s) at a time, ` +
+      `retention every ${Math.round(RETENTION_INTERVAL_MS / 60_000)}min`,
   );
   for (;;) {
     try {
+      // Ticked before the queue is drained, and not awaited in a way that can block
+      // it: `tick()` swallows its own failure and answers with a boolean, so an
+      // unreachable database costs one log line rather than a stalled queue.
+      void retention.tick();
       const summary = await runPool({
         concurrency: CONCURRENCY,
         claim: claimNextJobRow,
