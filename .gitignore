@@ -74,3 +74,10 @@ var/
 
 .worktrees/
 .vitest/
+
+# Next.js leftovers. The app is TanStack Start now, so these cannot be produced
+# any more -- but they were committed in the pre-migration history and a stale
+# checkout can still resurrect them, and a stray .next/ makes the zero-trace
+# check report a trace that no longer exists.
+.next/
+next-env.d.ts
