@@ -1,23 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router"
-import { SiteHeader } from "~/components/site-header"
-import { SiteFooter } from "~/components/site-footer"
+import { Wrench } from "@phosphor-icons/react"
+import { Topographic } from "~/components/topographic"
 
-// TODO(Task 3.3): this route has NO recovery source. The pre-strip tree at
-// 5e8a00c7d7b6287e0e0b0f2ad6519041df4f989a contains 14 `page.tsx` files and none
-// of them is `maintenance`, but the route table in the plan lists `/maintenance`
-// as public, which makes this the fifteenth route. The copy below is therefore a
-// placeholder written to fill the route, not a port. Replace it with the real
-// page when the source is identified, or delete the route if the plan's row was
-// stale.
 export const Route = createFileRoute("/maintenance")({
   head: () => ({
-    meta: [
-      { title: "Maintenance - Docrivo" },
-      {
-        name: "description",
-        content: "Docrivo sedang dalam pemeliharaan singkat.",
-      },
-    ],
+    meta: [{ title: "Docrivo - dalam perbaikan" }],
   }),
   component: MaintenancePage,
 })
@@ -25,24 +12,29 @@ export const Route = createFileRoute("/maintenance")({
 function MaintenancePage() {
   return (
     <>
-      <SiteHeader />
-      <main
-        id="main"
-        className="grid min-h-[calc(100dvh-67px)] place-items-center bg-paper-white px-4 py-16"
-      >
-        <section className="w-full max-w-md rounded-cards border border-ink bg-cream p-8 text-center shadow-hard-xl">
-          <span className="text-caption font-semibold uppercase tracking-[0.08em] text-muted-gray">
-            Maintenance
-          </span>
-          <h1 className="mt-3 text-heading font-semibold leading-heading tracking-heading">
-            Sedang <span className="emph">dirawat</span>.
-          </h1>
-          <p className="mt-4 text-body-sm leading-7 text-muted">
-            Docrivo sedang dalam pemeliharaan singkat. Coba lagi sebentar lagi.
-          </p>
-        </section>
+      <Topographic />
+
+      <main className="relative z-10 mx-auto flex min-h-dvh max-w-lg flex-col items-center justify-center px-6 text-center">
+        <div className="mb-6 flex size-16 items-center justify-center rounded-full bg-lime-sprint/20">
+          <Wrench size={32} className="text-lime-sprint" />
+        </div>
+
+        <h1 className="font-fraunces text-heading-sm italic leading-heading-sm tracking-heading-sm text-ink md:text-heading md:leading-heading md:tracking-heading">
+          Docrivo
+          <br />
+          <span className="not-italic">dalam perbaikan</span>
+        </h1>
+
+        <p className="mt-4 text-body leading-body text-muted">
+          Kami sedang menyiapkan sesuatu yang lebih baik.
+          <br />
+          Silakan kembali lagi nanti.
+        </p>
+
+        <p className="mt-12 text-caption leading-caption text-muted-gray">
+          Docrivo &middot; kembali dalam waktu dekat
+        </p>
       </main>
-      <SiteFooter />
     </>
   )
 }

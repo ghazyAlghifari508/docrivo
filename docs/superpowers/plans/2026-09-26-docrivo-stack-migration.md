@@ -2201,7 +2201,7 @@ describe("ownership enforcement", () => {
 })
 ```
 
-This is a placeholder assertion pending Task 4.1, which implements `getOwnedJob`. It is expected to fail here and pass after Task 4.1. Do not commit a passing variant of this file before `getOwnedJob` exists.
+**Superseded by Task 3.3.** The drafted assertion above was wrong three ways and shipped green for the wrong reason; the corrected, mutation-verified version is in the file. See Rulings 3.3. Task 4.1 extends the same module rather than replacing the test.
 
 - [ ] **Step 6: Verify every route renders**
 
@@ -2243,7 +2243,7 @@ git commit -m "feat: port all 15 routes and 17 components to TanStack Start"
 import { beforeEach, describe, expect, it } from "vitest"
 import { db } from "~/db"
 import { sql } from "drizzle-orm"
-import { createGeneration, getOwnedJob, claimNextJob } from "./jobs"
+import { createGeneration, getOwnedJob, readOwnedJob, claimNextJob } from "./jobs"
 
 const USER_A = "00000000-0000-0000-0000-00000000000a"
 const USER_B = "00000000-0000-0000-0000-00000000000b"
@@ -2269,7 +2269,7 @@ describe("getOwnedJob", () => {
     const job = await createGeneration({
       userId: USER_A, sourceUrl: "https://example.com", normalizedDomain: "example.com",
     })
-    const found = await getOwnedJob({ jobId: job.id, userId: USER_A })
+    const found = await readOwnedJob({ jobId: job.id, userId: USER_A })
     expect(found.id).toBe(job.id)
   })
 
@@ -2277,7 +2277,7 @@ describe("getOwnedJob", () => {
     const job = await createGeneration({
       userId: USER_A, sourceUrl: "https://example.com", normalizedDomain: "example.com",
     })
-    await expect(getOwnedJob({ jobId: job.id, userId: USER_B })).rejects.toMatchObject({
+    await expect(readOwnedJob({ jobId: job.id, userId: USER_B })).rejects.toMatchObject({
       status: 404,
     })
   })
@@ -3013,7 +3013,7 @@ const TERMINAL = new Set(["completed", "failed"])
 export function jobQueryOptions(jobId: string, userId: string) {
   return queryOptions({
     queryKey: ["job", jobId],
-    queryFn: () => getOwnedJob({ data: { jobId, userId } }),
+    queryFn: () => getOwnedJob({ data: { jobId, userId } }),  // server fn takes the .data envelope; tests call readOwnedJob directly
     refetchInterval: (query) => {
       const status = (query.state.data as { status?: string } | undefined)?.status
       return status && TERMINAL.has(status) ? false : 2500
