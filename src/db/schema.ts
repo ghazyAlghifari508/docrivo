@@ -69,6 +69,17 @@ export const generationJobs = pgTable(
     pagesAnalyzed: integer("pages_analyzed").notNull().default(0),
     startedAt: timestamp("started_at", { withTimezone: true }),
     completedAt: timestamp("completed_at", { withTimezone: true }),
+    /**
+     * When the worker holding this job stopped refreshing it. `null` unless the
+     * status is a mid-flight one -- the claim sets it, the heartbeat extends it,
+     * and `reclaim_expired_jobs()` clears it on the way back to the queue.
+     *
+     * Not `notNull`, and not defaulted: a `queued` row has no owner, and a
+     * `running` row written before `migrations/0009_job_lease.sql` has no
+     * expiry either. Both are "no lease", which the reclaim reads as "fall back
+     * to `updated_at`" rather than as "expired".
+     */
+    leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
     userId: uuid("user_id"),
@@ -91,6 +102,13 @@ export const generationJobs = pgTable(
       t.createdAt.desc().nullsFirst(),
     ),
     index("generation_jobs_status_idx").on(t.status),
+    // Partial, and the predicate is the *deparsed* spelling because that is what
+    // `pg_get_expr` returns and what `schema.test.ts` compares. `midflight_statuses()`
+    // is unqualified here for the same reason: the deparser resolves it against
+    // the search path and drops the `public.` the migration writes.
+    index("generation_jobs_lease_idx")
+      .on(t.leaseExpiresAt)
+      .where(sql`(status = ANY (midflight_statuses()))`),
     index("idx_generation_jobs_retry_of").on(t.retryOf),
     index("idx_generation_jobs_user_id").on(t.userId),
     uniqueIndex("generation_jobs_retry_of_once")

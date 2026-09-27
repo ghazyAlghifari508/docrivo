@@ -15,34 +15,61 @@ import {
   recordDesignExtraction,
   recordExtractedAsset,
   recordGeneratedDocument,
+  renewLease,
   writeJobLog,
   type JobRow,
   type JobStatusPatch,
 } from "./db";
+import { runPool, workerConcurrency } from "./pool";
 
 const POLL_MS = Number(process.env.WORKER_POLL_MS ?? 2000);
 const PORT = Number(process.env.PORT ?? 8080);
 
+/**
+ * How many jobs may run at once, and how often each one proves it is alive.
+ *
+ * The bound is configuration rather than a constant because the right value is
+ * measured, not chosen: each job holds a Chromium process resident for the whole
+ * crawl, and a Fly microVM has 512MB to divide between them. The default is one,
+ * which is the pre-Task-7.1 behaviour, so raising it is a decision somebody makes
+ * with numbers in front of them.
+ *
+ * The refresh has to be comfortably inside `LEASE_MS` (five minutes): a lease
+ * that is refreshed as often as it can be is one slow write away from handing a
+ * second worker a job this one is still crawling. A minute buys four consecutive
+ * misses before that happens.
+ */
+const CONCURRENCY = workerConcurrency(process.env);
+const LEASE_REFRESH_MS = Number(process.env.WORKER_LEASE_REFRESH_MS ?? 60_000);
+
 export async function main() {
   serveHttp();
   let backoff = POLL_MS;
-  console.log(`[worker] polling every ${POLL_MS}ms`);
+  console.log(
+    `[worker] polling every ${POLL_MS}ms, up to ${CONCURRENCY} job(s) at a time`,
+  );
   for (;;) {
     try {
-      const job = await claimNextJobRow();
-      if (job) {
-        await processJob(job);
-        backoff = POLL_MS; // reset after a successful job
-      } else {
-        backoff = Math.min(backoff * 1.5, 30_000); // no jobs → easier on nano
-      }
+      const summary = await runPool({
+        concurrency: CONCURRENCY,
+        claim: claimNextJobRow,
+        process: processJob,
+        onError: (err, job) => {
+          // `processJob` writes the failure to the row before it returns, so a job
+          // that arrives here has already been recorded. A `null` job means the
+          // claim itself failed and there is no row to blame.
+          console.error(
+            job
+              ? `[worker] job ${job.id} failed`
+              : "[worker] claim failed",
+            err,
+          );
+        },
+      });
+      // A pool that ran at least one job means the database answered, so the
+      // connection is healthy and the short interval is right again.
+      backoff = summary.processed + summary.failed > 0 ? POLL_MS : Math.min(backoff * 1.5, 30_000);
     } catch (err) {
-      // The only thing that lands here is a failure to reach the database: a
-      // claim, a status write, a page write. The retry lives in Postgres and in
-      // the connection pool, so the loop's job is to wait longer rather than to
-      // hammer. (The comment that used to sit here named a PostgREST schema-cache
-      // reload, which no longer exists -- there is no HTTP hop between this
-      // process and the row any more.)
       console.error("[worker] poll failed", err);
       backoff = Math.min(backoff * 2, 30_000);
     }
@@ -66,46 +93,53 @@ function serveHttp() {
 }
 
 export async function processJob(job: JobRow) {
-  try {
-    await log(job.id, "info", "job_started", job.sourceUrl);
-    const browser = await chromium.launch({ headless: true, args: ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu", "--disable-software-rasterizer", "--headless=chrome", "--proxy-auto-detect"] });
+  // The lease heartbeat wraps the whole job, not just the model call. A crawl of
+  // five pages is minutes of wall clock during which the only writes are the
+  // per-page progress ones, and a job that goes quiet for `LEASE_MS` is exactly
+  // the job `reclaim_expired_jobs()` is built to take back. A heartbeat that only
+  // covered `generateDesign` would leave the crawl unprotected.
+  return withLease(job.id, async () => {
     try {
-      const result = await crawl(browser, job);
-      await setStatus(job.id, "generating");
-      const docs = await withHeartbeat(job.id, () => generateDesign(job.sourceUrl, result.extraction));
-      const extraction = result.extraction;
-      // The same six columns the old table-name insert listed, named explicitly.
-      // Spreading the whole extraction would quietly start persisting `tokens`,
-      // `component_details` and the rest the first time someone added a field to
-      // `DesignExtraction`; the input type is a `Pick`, so the two lists have to
-      // agree or it stops compiling.
-      await recordDesignExtraction({
-        jobId: job.id,
-        colors: extraction.colors,
-        typography: extraction.typography,
-        layout_patterns: extraction.layout_patterns,
-        components: extraction.components,
-        metadata: extraction.metadata,
-        confidence_score: extraction.confidence_score,
-      });
-      await recordGeneratedDocument({
-        jobId: job.id,
-        designMd: docs.designMd,
-        implementationPrompt: docs.implementationPrompt,
-      });
-      await setStatus(job.id, "completed", {
-        pagesAnalyzed: result.pagesAnalyzed,
-        completedAt: new Date(),
-      });
-      await log(job.id, "info", "job_completed");
-    } finally {
-      await browser.close();
+      await log(job.id, "info", "job_started", job.sourceUrl);
+      const browser = await chromium.launch({ headless: true, args: ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu", "--disable-software-rasterizer", "--headless=chrome", "--proxy-auto-detect"] });
+      try {
+        const result = await crawl(browser, job);
+        await setStatus(job.id, "generating");
+        const docs = await withHeartbeat(job.id, () => generateDesign(job.sourceUrl, result.extraction));
+        const extraction = result.extraction;
+        // The same six columns the old table-name insert listed, named explicitly.
+        // Spreading the whole extraction would quietly start persisting `tokens`,
+        // `component_details` and the rest the first time someone added a field to
+        // `DesignExtraction`; the input type is a `Pick`, so the two lists have to
+        // agree or it stops compiling.
+        await recordDesignExtraction({
+          jobId: job.id,
+          colors: extraction.colors,
+          typography: extraction.typography,
+          layout_patterns: extraction.layout_patterns,
+          components: extraction.components,
+          metadata: extraction.metadata,
+          confidence_score: extraction.confidence_score,
+        });
+        await recordGeneratedDocument({
+          jobId: job.id,
+          designMd: docs.designMd,
+          implementationPrompt: docs.implementationPrompt,
+        });
+        await setStatus(job.id, "completed", {
+          pagesAnalyzed: result.pagesAnalyzed,
+          completedAt: new Date(),
+        });
+        await log(job.id, "info", "job_completed");
+      } finally {
+        await browser.close();
+      }
+    } catch (err) {
+      const code = err instanceof AppError ? err.code : "WEBSITE_BLOCKED";
+      const message = err instanceof Error ? err.message : "Worker failed";
+      await failJob(job.id, code, message);
     }
-  } catch (err) {
-    const code = err instanceof AppError ? err.code : "WEBSITE_BLOCKED";
-    const message = err instanceof Error ? err.message : "Worker failed";
-    await failJob(job.id, code, message);
-  }
+  });
 }
 
 async function crawl(browser: Awaited<ReturnType<typeof chromium.launch>>, job: JobRow) {
@@ -558,6 +592,39 @@ async function withHeartbeat<T>(jobId: string, work: () => Promise<T>) {
       console.error("[worker] heartbeat failed", err);
     });
   }, 60_000);
+  try {
+    return await work();
+  } finally {
+    clearInterval(timer);
+  }
+}
+
+/**
+ * Extends the job's lease for as long as `work` runs.
+ *
+ * Separate from `withHeartbeat` above because the two write different columns for
+ * different reasons. That one pings `status`, which is what the browser's progress
+ * bar polls, and it must not run during the crawl: writing `generating` while the
+ * crawler is still on page two would tell the user something untrue. This one
+ * writes `lease_expires_at` and nothing else, because the reclaim asks "is anybody
+ * still working on this" and that question has to be answerable during every
+ * phase.
+ *
+ * A failed renewal is logged and the job carries on. The alternative -- failing the
+ * job because a heartbeat could not be written -- would turn a transient database
+ * blip into a lost paid-for generation, and the lease exists precisely to survive
+ * a few missed writes.
+ */
+async function withLease<T>(jobId: string, work: () => Promise<T>) {
+  const timer = setInterval(() => {
+    void renewLease({ jobId, now: new Date() })
+      .then((renewed) => {
+        if (!renewed) console.error(`[worker] lease lost: job ${jobId} is gone`);
+      })
+      .catch((err) => {
+        console.error("[worker] lease renewal failed", err);
+      });
+  }, LEASE_REFRESH_MS);
   try {
     return await work();
   } finally {

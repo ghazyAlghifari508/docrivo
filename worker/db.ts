@@ -115,6 +115,12 @@ const highWater = new Map<string, number>()
  * `null` and a throw are different answers and the caller treats them differently:
  * `null` is an idle queue and backs the poll interval off, a throw is a database
  * problem and doubles it.
+ *
+ * The function also requeues jobs whose worker stopped renewing their lease --
+ * see `migrations/0009_job_lease.sql` for why that is not the `updated_at` rule
+ * this replaced, and `worker/lease.test.ts` for the boundary. The returned row
+ * carries the fresh `leaseExpiresAt`, so the caller's first heartbeat is already
+ * covered by a lease that was taken under the same row lock as the status change.
  */
 export async function claimNextJob(client: DbClient = db): Promise<JobRow | null> {
   const rows = await client.execute<{ id: string }>(
@@ -130,6 +136,91 @@ export async function claimNextJob(client: DbClient = db): Promise<JobRow | null
     .limit(1)
 
   return job ?? null
+}
+
+/**
+ * How long a claimed job stays claimable without a heartbeat.
+ *
+ * Five minutes, against a 60-second refresh: four consecutive missed writes
+ * before a live job is requeued. Those four minutes are what keep a database
+ * hiccup or a GC pause from handing a second worker a job the first one is still
+ * crawling, and they are the reason the number is not the poll interval.
+ */
+export const LEASE_MS = 5 * 60_000
+
+/**
+ * The instant a lease written at `now` runs out.
+ *
+ * Pure, and a named function rather than an inline `+ LEASE_MS`, so the heartbeat
+ * and the test that pins its arithmetic are reading the same expression.
+ */
+export function leaseExpiry(now: Date): Date {
+  return new Date(now.getTime() + LEASE_MS)
+}
+
+/**
+ * Requeues jobs whose worker stopped renewing the lease, and answers with the ids
+ * of the rows it touched.
+ *
+ * A named entry point for the recovery rather than only a step inside
+ * `claimNextJob()`, so a sweeper can run it on its own and so a test can observe
+ * the recovery without a claim to muddy the answer: through the claim alone, "the
+ * reclaim did nothing" and "the reclaim worked and the claim then had nothing to
+ * hand" produce the same empty result.
+ *
+ * Ids and not rows. The function is a `RETURN QUERY` over an `UPDATE`, read back
+ * through a raw `execute`, so its columns arrive in the database's spelling --
+ * `error_code`, not `errorCode` -- and typing that as `JobRow` would be a claim
+ * about the shape that the driver does not honour. Everything a caller could want
+ * besides the id is a constant of the reclaim: `status` is `'queued'`, `progress`
+ * is `0`, the error columns are `NULL` and the lease is `NULL`. A caller that
+ * needs the state re-reads the row, which is what `worker/lease.test.ts` does.
+ *
+ * `now` is passed to the function rather than left to `now()` inside it, for the
+ * same reason `renewLease` takes one. The rule is a boundary -- a lease is
+ * expired at one instant and live at the next -- and a boundary is only testable
+ * if the instant is the caller's to choose. `worker/lease.test.ts` puts a row one
+ * millisecond either side of a fixed instant and requires the reclaim to pick
+ * exactly the earlier one.
+ *
+ * The decision itself is in the database, next to the claim, because the two
+ * cannot disagree about which rows are in flight.
+ */
+export async function reclaimExpiredJobs(
+  input: { now: Date } = { now: new Date() },
+  client: DbClient = db,
+): Promise<string[]> {
+  const rows = await client.execute<{ id: string }>(
+    sql`select id from public.reclaim_expired_jobs(${input.now.toISOString()}::timestamptz)`,
+  )
+  return rows.map((row) => row.id)
+}
+
+/**
+ * Extends a job's lease to `now + LEASE_MS`, and answers the instant written.
+ *
+ * `now` is a parameter rather than `new Date()` inside because the whole point of
+ * the lease is a boundary in time, and a boundary cannot be tested by sleeping
+ * through it. The caller passes the same clock it uses for the backoff, and a
+ * test passes a fixed instant and compares the stored value exactly -- so a lease
+ * of four minutes and one of six both fail the assertion instead of both passing
+ * a tolerance.
+ *
+ * `null` for a row that is gone rather than a throw: a heartbeat can fire after
+ * the user deleted the job, and the caller logs and carries on.
+ */
+export async function renewLease(
+  input: { jobId: string; now: Date },
+  client: DbClient = db,
+): Promise<Date | null> {
+  const expiresAt = leaseExpiry(input.now)
+  const renewed = await client
+    .update(generationJobs)
+    .set({ leaseExpiresAt: expiresAt })
+    .where(eq(generationJobs.id, input.jobId))
+    .returning({ leaseExpiresAt: generationJobs.leaseExpiresAt })
+
+  return renewed[0]?.leaseExpiresAt ?? null
 }
 
 /**
