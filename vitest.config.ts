@@ -14,7 +14,11 @@ export default defineConfig({
   },
   test: {
     environment: "node",
-    include: ["src/**/*.test.ts"],
+    // `worker` is here as of Task 6.1, which ported the background worker off the
+    // InsForge client and onto Drizzle. `tsconfig.json` already includes that
+    // directory, so the coverage gap was only in this glob -- and an uncollected
+    // test file is worse than no test, because `npm test` reports green.
+    include: ["src/**/*.test.ts", "worker/**/*.test.ts"],
     pool: "forks",
     // Sequential, because every database-backed suite in this project shares one
     // `docrivo_test`. `src/queries/jobs.test.ts` truncates `generation_jobs` so

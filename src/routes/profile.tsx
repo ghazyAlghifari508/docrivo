@@ -92,7 +92,7 @@ export function ProfilePage() {
               Kelola identitas <span className="emph">akun</span>.
             </h1>
             <p className="mt-3 max-w-xl text-body-sm leading-7 text-muted">
-              Data ini berasal langsung dari akun InsForge/Google kamu, bukan data dummy.
+              Data ini berasal langsung dari akun Google kamu, bukan data dummy.
             </p>
           </header>
 

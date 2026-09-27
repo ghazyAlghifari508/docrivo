@@ -34,6 +34,11 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# ...except the template. It holds no secrets, and it is the only record of which
+# variables the app actually reads -- Task 6.1 rewrote it against the source and
+# the change was invisible while this rule swallowed it. `.env.local` stays
+# ignored: the negation names one file.
+!.env.example
 
 # vercel
 .vercel

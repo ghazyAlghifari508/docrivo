@@ -3,7 +3,6 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import { ArrowRight, GlobeHemisphereWest, Warning } from "@phosphor-icons/react";
 import { useState, type FormEvent } from "react";
-import { setActiveScrapeId } from "~/lib/history";
 import { createScrape } from "~/queries/scrapes";
 
 export function HtmlScraper({
@@ -54,7 +53,12 @@ export function HtmlScraper({
       }
 
       onConsumed?.();
-      setActiveScrapeId(result.scrapeId);
+      // No session-storage write here any more. `src/lib/history.ts` stored the
+      // new scrape's id under `docrivo:active:scrape:v1` and nothing ever read it
+      // back -- the detail route gets its id from the URL, which is also what
+      // makes a shared link work. The intent behind the file (a refresh starts
+      // clean, tab switching keeps state) is unchanged: the id lives in the
+      // address bar, so a reload is clean and a back-navigation is not.
       void navigate({ to: "/history/scrapes/$id", params: { id: result.scrapeId } });
     } catch {
       setError("Jaringan bermasalah. Coba lagi sebentar lagi.");
