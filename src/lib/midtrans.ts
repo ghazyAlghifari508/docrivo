@@ -1,5 +1,3 @@
-import "server-only";
-
 // Midtrans Snap (sandbox) via REST — no midtrans-client dep, redirect flow so
 // no Snap.js needed. Verification is poll-based (getTransactionStatus), so no
 // webhook/tunnel is required for localhost.
