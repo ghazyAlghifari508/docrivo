@@ -2132,6 +2132,23 @@ function LoginPage() {
 
 `safeNext` runs inside `validateSearch`, so a malicious `?next=` is discarded before it reaches the callback URL. This is the defence the InsForge-era `safeNext()` provided.
 
+**Write the call-site test — this is the step that makes the guard real.**
+`safeNext` returns `null` both for a missing param and for a rejected one, and a
+caller that falls back silently discards the protection. A unit test on
+`redirect.ts` cannot catch that; only a test on this route can. In
+`src/routes/__tests__/login-redirect.test.ts`:
+
+- a missing `next` produces the default destination
+- `?next=https://evil.example` produces the same default destination, **not**
+  the off-origin URL
+- `?next=/history` is preserved unchanged
+- `?next=/%2f%2fevil.example` is preserved or rejected, but never resolves
+  off-origin
+
+Assert on the **resolved destination**, not on the absence of a throw. A route
+that "rejects" by crashing satisfies a `toThrow()` assertion while still being
+broken.
+
 - [ ] **Step 5: Write the ownership test**
 
 `src/components/__tests__/ownership.test.ts`:
