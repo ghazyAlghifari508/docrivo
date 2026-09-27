@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm"
 import { afterEach, describe, expect, it } from "vitest"
-import { db } from "~/db"
+import { testDb } from "~/db"
 import { users } from "~/db/schema-auth"
 import { generationJobs } from "~/db/schema"
 
@@ -33,12 +33,29 @@ import { generationJobs } from "~/db/schema"
  * and `.user_id` are `uuid`, so a non-UUID string is rejected by Postgres with
  * `invalid input syntax for type uuid` before the query runs, and the test
  * would then be asserting on the wrong error.
+ *
+ * The fixtures go through `testDb`, not the `db` application client. `db`
+ * resolves `DATABASE_URL` and its schema is identical to the test database's, so
+ * a suite that used it would insert these users and this job into the
+ * development data and still pass -- the failure mode is invisible from the test
+ * output alone. `client()` refuses to fall back rather than defaulting, matching
+ * `src/db/schema.test.ts`.
  */
 const OWNER = "00000000-0000-0000-0000-0000000000a1"
 const INTRUDER = "00000000-0000-0000-0000-0000000000b2"
 const JOB = "00000000-0000-0000-0000-0000000000c3"
 
+const client = () => {
+  if (!testDb) {
+    throw new Error(
+      "DATABASE_URL_TEST is not set: refusing to write to the development database",
+    )
+  }
+  return testDb
+}
+
 async function seed() {
+  const db = client()
   await db
     .insert(users)
     .values([
@@ -59,6 +76,7 @@ async function seed() {
 }
 
 afterEach(async () => {
+  const db = client()
   await db.delete(generationJobs).where(eq(generationJobs.id, JOB))
   await db.delete(users).where(eq(users.id, OWNER))
   await db.delete(users).where(eq(users.id, INTRUDER))
@@ -69,7 +87,7 @@ describe("ownership enforcement", () => {
     await seed()
     const { readOwnedJob } = await import("~/queries/jobs")
 
-    const job = await readOwnedJob({ jobId: JOB, userId: OWNER })
+    const job = await readOwnedJob({ jobId: JOB, userId: OWNER }, client())
     expect(job.id).toBe(JOB)
   })
 
@@ -81,7 +99,7 @@ describe("ownership enforcement", () => {
     // would be a real leak of that fact, and a bare throw of any other shape
     // would mean the ownership filter is not doing the work.
     await expect(
-      readOwnedJob({ jobId: JOB, userId: INTRUDER }),
+      readOwnedJob({ jobId: JOB, userId: INTRUDER }, client()),
     ).rejects.toMatchObject({ isNotFound: true })
   })
 
@@ -89,10 +107,13 @@ describe("ownership enforcement", () => {
     const { readOwnedJob } = await import("~/queries/jobs")
 
     await expect(
-      readOwnedJob({
-        jobId: "00000000-0000-0000-0000-0000000000ff",
-        userId: OWNER,
-      }),
+      readOwnedJob(
+        {
+          jobId: "00000000-0000-0000-0000-0000000000ff",
+          userId: OWNER,
+        },
+        client(),
+      ),
     ).rejects.toMatchObject({ isNotFound: true })
   })
 })

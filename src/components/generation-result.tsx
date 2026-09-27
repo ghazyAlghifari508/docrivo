@@ -1,6 +1,6 @@
 "use client";
 
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate, isNotFound } from "@tanstack/react-router";
 import {
   ArrowClockwise,
   ClipboardText,
@@ -10,29 +10,35 @@ import {
   CircleNotch,
 } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
+import { getOwnedJob } from "~/queries/jobs";
 
+/**
+ * Mirrors what `getOwnedJob` returns: the Drizzle column names, camelCased. The
+ * deleted Next handler passed InsForge rows through untouched, so this type was
+ * snake_case; the query layer now selects named columns instead.
+ */
 type Job = {
   id: string;
   sourceUrl: string;
   status: string;
   progress: number;
-  errorMessage?: string;
+  errorMessage: string | null;
   pagesAnalyzed: number;
-  createdAt: string;
+  createdAt: Date | string;
   assets: Array<{
     id: string;
-    asset_type: string;
-    source_url: string;
-    filename?: string;
+    assetType: string;
+    sourceUrl: string;
+    filename: string | null;
     status: string;
   }>;
   pages: Array<{
     id: string;
     url: string;
-    title?: string;
-    screenshot_desktop_url?: string;
+    title: string | null;
+    screenshotDesktopUrl: string | null;
   }>;
-  result: null | { designMd: string; implementationPrompt: string };
+  result: null | { designMd: string | null; implementationPrompt: string | null };
 };
 
 const STAGES = [
@@ -86,30 +92,24 @@ export function GenerationResult({
     async function tick() {
       controller = new AbortController();
       try {
-        // TODO(Task 4.1): replace this poll with the `getOwnedJob` server
-        // function (and, from Task 5.1, its TanStack Query option factory). The
-        // `/api/generations/:id` handler was deleted in Task 3.1 and is not
-        // being re-created.
-        const res = await fetch(`/api/generations/${id}`, {
-          cache: "no-store",
+        // The ownership check lives in the server function, which raises the
+        // router's not-found payload for a job owned by somebody else and for
+        // an id that does not exist alike. `isNotFound` on the client is the
+        // same predicate, so both arrive here as one state.
+        const detail = await getOwnedJob({
+          data: { jobId: id },
           signal: controller.signal,
         });
-        if (res.status === 404) {
-          if (alive) setLoadError("not_found");
-          return;
-        }
-        if (!res.ok) throw new Error(String(res.status));
-        const json = await res.json();
         if (!alive) return;
         setLoadError("");
-        setJob(json);
+        setJob(detail);
         // Sliding window: keep up to 3 samples for progress-rate estimation.
         const samples = samplesRef.current;
-        samples.push({ t: Date.now(), p: json.progress });
+        samples.push({ t: Date.now(), p: detail.progress });
         if (samples.length > 3) samples.shift();
         if (
           samples.length >= 2 &&
-          !["completed", "failed", "cancelled"].includes(json.status)
+          !["completed", "failed", "cancelled"].includes(detail.status)
         ) {
           const dt = (samples[samples.length - 1].t - samples[0].t) / 1000;
           const dp = samples[samples.length - 1].p - samples[0].p;
@@ -118,14 +118,19 @@ export function GenerationResult({
               Math.round(((100 - samples[samples.length - 1].p) / dp) * dt),
             );
         }
-        if (!["completed", "failed", "cancelled"].includes(json.status))
+        if (!["completed", "failed", "cancelled"].includes(detail.status))
           // `() => void tick()` rather than `tick` itself: `tick` is async, and
           // `setTimeout` wants a void-returning callback.
           timer = setTimeout(() => void tick(), 2500);
       } catch (err) {
+        if (!alive) return;
+        if (isNotFound(err)) {
+          setLoadError("not_found");
+          return;
+        }
         if (
-          !alive ||
-          (err instanceof DOMException && err.name === "AbortError")
+          err instanceof DOMException &&
+          err.name === "AbortError"
         )
           return;
         setLoadError("transient");

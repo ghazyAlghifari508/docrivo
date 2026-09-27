@@ -3,6 +3,7 @@
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { ArrowRight, GlobeHemisphereWest, Warning } from "@phosphor-icons/react";
 import { useState, type FormEvent } from "react";
+import { createGeneration } from "~/queries/jobs";
 
 export function GenerationForm({
   tone = "light",
@@ -37,29 +38,27 @@ export function GenerationForm({
     setLoading(true);
     setError("");
     try {
-      // TODO(Task 4.1): replace this POST with the `createGeneration` server
-      // function. The `/api/generations` handler was deleted in Task 3.1 and is
-      // not being re-created -- Task 4.1 owns the equivalent server function.
-      const res = await fetch("/api/generations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url }),
-      });
-      const json = await res.json();
-      if (res.status === 401) {
-        void navigate({ to: "/login" });
-        return;
-      }
-      if (res.status === 402) {
-        onQuotaExceeded?.();
-        return;
-      }
-      if (!res.ok) {
+      // The server function derives the user from the session, so there is no
+      // `userId` in the payload for a caller to forge, and it answers with a
+      // discriminated result rather than throwing so each failure keeps its own
+      // message.
+      const result = await createGeneration({ data: { url: url.trim() } });
+
+      if (!result.ok) {
+        if (result.error.code === "UNAUTHORIZED") {
+          void navigate({ to: "/login" });
+          return;
+        }
+        if (result.error.code === "QUOTA_EXCEEDED") {
+          onQuotaExceeded?.();
+          return;
+        }
         setError("DESIGN.md gagal dibuat. Pastikan link publik bisa dibuka, lalu coba lagi.");
         return;
       }
-      onCreated?.(json.jobId);
-      void navigate({ to: "/generations/$id", params: { id: json.jobId } });
+
+      onCreated?.(result.jobId);
+      void navigate({ to: "/generations/$id", params: { id: result.jobId } });
     } catch {
       setError("Jaringan bermasalah. Coba lagi sebentar lagi.");
     } finally {

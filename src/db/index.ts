@@ -29,6 +29,16 @@ export { schema, authSchema }
 export const pgClient = postgres(url, { max: 5 })
 export const db = drizzle(pgClient, { schema: allTables })
 
+/**
+ * The Drizzle client type, exported so a query module can accept either client
+ * as a parameter. `src/queries/*` takes the client as an explicit argument,
+ * defaulting to `db`, so a unit test can pass `testDb` and reach
+ * `docrivo_test`. The alternative -- a module that closes over `db` -- leaves no
+ * seam, and a test that reaches the dev database instead is indistinguishable
+ * from one that does not, because the two schemas are identical by construction.
+ */
+export type DbClient = typeof db
+
 // A separate client for the test suite, so tests target docrivo_test without
 // the application ever resolving to it by accident. Null when unset, so a test
 // that needs it fails loudly rather than silently using the dev database.

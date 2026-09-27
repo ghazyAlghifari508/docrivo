@@ -16,5 +16,13 @@ export default defineConfig({
     environment: "node",
     include: ["src/**/*.test.ts"],
     pool: "forks",
+    // Sequential, because every database-backed suite in this project shares one
+    // `docrivo_test`. `src/queries/jobs.test.ts` truncates `generation_jobs` so
+    // its claim tests start from an empty queue, and that delete is invisible to
+    // a suite running in another process at the same moment:
+    // `src/components/__tests__/ownership.test.ts` had a job seeded and gone
+    // before it read it back. Each file still gets its own fork, so module state
+    // stays isolated; only the wall clock is serial.
+    fileParallelism: false,
   },
 });

@@ -25,3 +25,26 @@ export class AppError extends Error {
     this.name = "AppError";
   }
 }
+
+/**
+ * The result shape every write server function returns.
+ *
+ * These functions answer with a value rather than throwing, because the caller
+ * has to tell three failures apart -- signed out, out of credits, unusable URL
+ * -- and each carries its own user-facing message from `ERROR_CODES`. A thrown
+ * error arrives at the client as an opaque message, so the component could only
+ * report "something went wrong" and would have to guess which case it was.
+ *
+ * `ok: true` is the discriminant, so the component narrows with a single
+ * `if (!result.ok)` rather than an `in` check on a code.
+ */
+export type ActionFailure = {
+  ok: false;
+  error: { code: string; message: string };
+};
+
+export type ActionResult<T> = ({ ok: true } & T) | ActionFailure;
+
+export function failure(code: string, message: string): ActionFailure {
+  return { ok: false, error: { code, message } };
+}
