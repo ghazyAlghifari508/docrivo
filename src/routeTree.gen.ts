@@ -10,33 +10,219 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AboutRouteImport } from './routes/about'
+import { Route as AdminRouteImport } from './routes/admin'
+import { Route as BantuanRouteImport } from './routes/bantuan'
+import { Route as FaqRouteImport } from './routes/faq'
+import { Route as HistoryRouteImport } from './routes/history'
+import { Route as LoginRouteImport } from './routes/login'
+import { Route as MaintenanceRouteImport } from './routes/maintenance'
+import { Route as PricingRouteImport } from './routes/pricing'
+import { Route as ProfileRouteImport } from './routes/profile'
+import { Route as SettingRouteImport } from './routes/setting'
+import { Route as TemplateRouteImport } from './routes/template'
+import { Route as TentangRouteImport } from './routes/tentang'
+import { Route as GenerationsIdRouteImport } from './routes/generations.$id'
+import { Route as HistoryScrapesIdRouteImport } from './routes/history_.scrapes.$id'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AboutRoute = AboutRouteImport.update({
+  id: '/about',
+  path: '/about',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminRoute = AdminRouteImport.update({
+  id: '/admin',
+  path: '/admin',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BantuanRoute = BantuanRouteImport.update({
+  id: '/bantuan',
+  path: '/bantuan',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FaqRoute = FaqRouteImport.update({
+  id: '/faq',
+  path: '/faq',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const HistoryRoute = HistoryRouteImport.update({
+  id: '/history',
+  path: '/history',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MaintenanceRoute = MaintenanceRouteImport.update({
+  id: '/maintenance',
+  path: '/maintenance',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PricingRoute = PricingRouteImport.update({
+  id: '/pricing',
+  path: '/pricing',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ProfileRoute = ProfileRouteImport.update({
+  id: '/profile',
+  path: '/profile',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingRoute = SettingRouteImport.update({
+  id: '/setting',
+  path: '/setting',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TemplateRoute = TemplateRouteImport.update({
+  id: '/template',
+  path: '/template',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TentangRoute = TentangRouteImport.update({
+  id: '/tentang',
+  path: '/tentang',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const GenerationsIdRoute = GenerationsIdRouteImport.update({
+  id: '/generations/$id',
+  path: '/generations/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const HistoryScrapesIdRoute = HistoryScrapesIdRouteImport.update({
+  id: '/history_/scrapes/$id',
+  path: '/history/scrapes/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/about': typeof AboutRoute
+  '/admin': typeof AdminRoute
+  '/bantuan': typeof BantuanRoute
+  '/faq': typeof FaqRoute
+  '/history': typeof HistoryRoute
+  '/login': typeof LoginRoute
+  '/maintenance': typeof MaintenanceRoute
+  '/pricing': typeof PricingRoute
+  '/profile': typeof ProfileRoute
+  '/setting': typeof SettingRoute
+  '/template': typeof TemplateRoute
+  '/tentang': typeof TentangRoute
+  '/generations/$id': typeof GenerationsIdRoute
+  '/history/scrapes/$id': typeof HistoryScrapesIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/about': typeof AboutRoute
+  '/admin': typeof AdminRoute
+  '/bantuan': typeof BantuanRoute
+  '/faq': typeof FaqRoute
+  '/history': typeof HistoryRoute
+  '/login': typeof LoginRoute
+  '/maintenance': typeof MaintenanceRoute
+  '/pricing': typeof PricingRoute
+  '/profile': typeof ProfileRoute
+  '/setting': typeof SettingRoute
+  '/template': typeof TemplateRoute
+  '/tentang': typeof TentangRoute
+  '/generations/$id': typeof GenerationsIdRoute
+  '/history/scrapes/$id': typeof HistoryScrapesIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/about': typeof AboutRoute
+  '/admin': typeof AdminRoute
+  '/bantuan': typeof BantuanRoute
+  '/faq': typeof FaqRoute
+  '/history': typeof HistoryRoute
+  '/login': typeof LoginRoute
+  '/maintenance': typeof MaintenanceRoute
+  '/pricing': typeof PricingRoute
+  '/profile': typeof ProfileRoute
+  '/setting': typeof SettingRoute
+  '/template': typeof TemplateRoute
+  '/tentang': typeof TentangRoute
+  '/generations/$id': typeof GenerationsIdRoute
+  '/history_/scrapes/$id': typeof HistoryScrapesIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths:
+    | '/'
+    | '/about'
+    | '/admin'
+    | '/bantuan'
+    | '/faq'
+    | '/history'
+    | '/login'
+    | '/maintenance'
+    | '/pricing'
+    | '/profile'
+    | '/setting'
+    | '/template'
+    | '/tentang'
+    | '/generations/$id'
+    | '/history/scrapes/$id'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to:
+    | '/'
+    | '/about'
+    | '/admin'
+    | '/bantuan'
+    | '/faq'
+    | '/history'
+    | '/login'
+    | '/maintenance'
+    | '/pricing'
+    | '/profile'
+    | '/setting'
+    | '/template'
+    | '/tentang'
+    | '/generations/$id'
+    | '/history/scrapes/$id'
+  id:
+    | '__root__'
+    | '/'
+    | '/about'
+    | '/admin'
+    | '/bantuan'
+    | '/faq'
+    | '/history'
+    | '/login'
+    | '/maintenance'
+    | '/pricing'
+    | '/profile'
+    | '/setting'
+    | '/template'
+    | '/tentang'
+    | '/generations/$id'
+    | '/history_/scrapes/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AboutRoute: typeof AboutRoute
+  AdminRoute: typeof AdminRoute
+  BantuanRoute: typeof BantuanRoute
+  FaqRoute: typeof FaqRoute
+  HistoryRoute: typeof HistoryRoute
+  LoginRoute: typeof LoginRoute
+  MaintenanceRoute: typeof MaintenanceRoute
+  PricingRoute: typeof PricingRoute
+  ProfileRoute: typeof ProfileRoute
+  SettingRoute: typeof SettingRoute
+  TemplateRoute: typeof TemplateRoute
+  TentangRoute: typeof TentangRoute
+  GenerationsIdRoute: typeof GenerationsIdRoute
+  HistoryScrapesIdRoute: typeof HistoryScrapesIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -48,11 +234,123 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/about': {
+      id: '/about'
+      path: '/about'
+      fullPath: '/about'
+      preLoaderRoute: typeof AboutRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin': {
+      id: '/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AdminRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/bantuan': {
+      id: '/bantuan'
+      path: '/bantuan'
+      fullPath: '/bantuan'
+      preLoaderRoute: typeof BantuanRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/faq': {
+      id: '/faq'
+      path: '/faq'
+      fullPath: '/faq'
+      preLoaderRoute: typeof FaqRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/history': {
+      id: '/history'
+      path: '/history'
+      fullPath: '/history'
+      preLoaderRoute: typeof HistoryRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/maintenance': {
+      id: '/maintenance'
+      path: '/maintenance'
+      fullPath: '/maintenance'
+      preLoaderRoute: typeof MaintenanceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/pricing': {
+      id: '/pricing'
+      path: '/pricing'
+      fullPath: '/pricing'
+      preLoaderRoute: typeof PricingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/profile': {
+      id: '/profile'
+      path: '/profile'
+      fullPath: '/profile'
+      preLoaderRoute: typeof ProfileRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/setting': {
+      id: '/setting'
+      path: '/setting'
+      fullPath: '/setting'
+      preLoaderRoute: typeof SettingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/template': {
+      id: '/template'
+      path: '/template'
+      fullPath: '/template'
+      preLoaderRoute: typeof TemplateRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/tentang': {
+      id: '/tentang'
+      path: '/tentang'
+      fullPath: '/tentang'
+      preLoaderRoute: typeof TentangRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/generations/$id': {
+      id: '/generations/$id'
+      path: '/generations/$id'
+      fullPath: '/generations/$id'
+      preLoaderRoute: typeof GenerationsIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/history_/scrapes/$id': {
+      id: '/history_/scrapes/$id'
+      path: '/history/scrapes/$id'
+      fullPath: '/history/scrapes/$id'
+      preLoaderRoute: typeof HistoryScrapesIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AboutRoute: AboutRoute,
+  AdminRoute: AdminRoute,
+  BantuanRoute: BantuanRoute,
+  FaqRoute: FaqRoute,
+  HistoryRoute: HistoryRoute,
+  LoginRoute: LoginRoute,
+  MaintenanceRoute: MaintenanceRoute,
+  PricingRoute: PricingRoute,
+  ProfileRoute: ProfileRoute,
+  SettingRoute: SettingRoute,
+  TemplateRoute: TemplateRoute,
+  TentangRoute: TentangRoute,
+  GenerationsIdRoute: GenerationsIdRoute,
+  HistoryScrapesIdRoute: HistoryScrapesIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
