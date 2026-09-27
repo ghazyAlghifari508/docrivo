@@ -1,8 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router"
 import { getRequestHeaders } from "@tanstack/react-start/server"
-import { resolveSession } from "~/auth/middleware"
 import { readScreenshot } from "~/storage/screenshots"
 import { readOwnedJob } from "~/queries/jobs"
+import { appDb } from "~/queries/app-db"
 
 /**
  * `GET /api/screenshot/<jobId>/<page>.png` -- one captured page image.
@@ -42,7 +42,7 @@ export type ScreenshotRouteDeps = {
    * session lookup, let alone the assertions.
    */
   requestHeaders?: () => Headers
-  resolveSession?: typeof resolveSession
+  resolveSession?: (headers: Headers) => Promise<{ user?: { id: string } | null } | null>
   readScreenshot?: typeof readScreenshot
   readOwnedJob?: typeof readOwnedJob
 }
@@ -52,7 +52,12 @@ export async function GET(
   deps: ScreenshotRouteDeps = {},
 ): Promise<Response> {
   const headers = (deps.requestHeaders ?? getRequestHeaders)()
-  const session = await (deps.resolveSession ?? resolveSession)(headers)
+  // Dynamic, not a top-level import: `~/auth/middleware` imports the Better
+  // Auth instance, and a route file is in the client graph, so a static import
+  // here put the whole auth server plus the `postgres` driver into
+  // `dist/client`. Three other call sites already resolve it this way.
+  const resolve = deps.resolveSession ?? (await import("~/auth/middleware")).resolveSession
+  const session = await resolve(headers)
   const userId = session?.user?.id
   if (!userId) return new Response("Not found", { status: 404, headers: HEADERS })
 
@@ -78,7 +83,12 @@ export async function GET(
   try {
     // Ownership first: a job owned by somebody else must be indistinguishable
     // from one that does not exist, and from a file that was never written.
-    await (deps.readOwnedJob ?? readOwnedJob)({ jobId, userId })
+    //
+    // The client is resolved here rather than as a parameter default, because a
+    // `db` import at module scope would link the `postgres` driver into the
+    // client bundle. See `src/queries/app-db.ts`.
+    const readJob = deps.readOwnedJob ?? readOwnedJob
+    await readJob({ jobId, userId }, await appDb())
 
     const bytes = await (deps.readScreenshot ?? readScreenshot)(jobId, pageIndex)
     return new Response(new Uint8Array(bytes), {

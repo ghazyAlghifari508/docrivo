@@ -1,8 +1,9 @@
 import { createServerFn } from "@tanstack/react-start"
 import { eq } from "drizzle-orm"
-import { db, type DbClient } from "~/db"
+import type { DbClient } from "~/db"
 import { users } from "~/db/schema-auth"
 import { failure, type ActionResult } from "~/lib/errors"
+import { appDb } from "~/queries/app-db"
 
 /**
  * What a signed-in user is. Resolved from the session, never from a payload, for
@@ -31,7 +32,7 @@ export function isValidDisplayName(name: string): boolean {
 
 export async function readProfile(
   input: { userId: string },
-  client: DbClient = db,
+  client: DbClient,
 ): Promise<ProfileUser | null> {
   const [row] = await client
     .select({ id: users.id, email: users.email, name: users.name })
@@ -50,7 +51,7 @@ export async function readProfile(
  */
 export async function renameProfile(
   input: { userId: string; name: string },
-  client: DbClient = db,
+  client: DbClient,
 ): Promise<{ ok: true; name: string }> {
   const name = input.name.trim()
 
@@ -86,7 +87,7 @@ export const getProfile = createServerFn({ method: "GET" }).handler(
     const { resolveSession } = await import("~/auth/middleware")
     const session = await resolveSession(getRequestHeaders())
     if (!session?.user) return null
-    return readProfile({ userId: session.user.id })
+    return readProfile({ userId: session.user.id }, await appDb())
   },
 )
 
@@ -101,7 +102,7 @@ export const updateProfile = createServerFn({ method: "POST" })
       if (!user) return failure("UNAUTHORIZED", "Masuk dengan Google dulu.")
 
       try {
-        const result = await renameProfile({ userId: user.id, name: data.name })
+        const result = await renameProfile({ userId: user.id, name: data.name }, await appDb())
         return { ok: true, name: result.name }
       } catch (error) {
         if (error instanceof ProfileValidationError) {

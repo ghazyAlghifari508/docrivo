@@ -2,13 +2,14 @@ import { createServerFn } from "@tanstack/react-start"
 import { getRequestHeaders } from "@tanstack/react-start/server"
 import { notFound } from "@tanstack/react-router"
 import { and, desc, eq } from "drizzle-orm"
-import { db, type DbClient } from "~/db"
+import type { DbClient } from "~/db"
 import { scrapeArtifacts } from "~/db/schema"
 import { AppError, ERROR_CODES, failure, type ActionResult } from "~/lib/errors"
 import { scrapeHtml } from "~/lib/fetch-html"
 import { validateUrl } from "~/lib/url-validator"
 import { consumeQuota, refundQuota } from "./entitlements"
 import { checkRateLimit } from "./rate-limit"
+import { appDb } from "~/queries/app-db"
 
 export type ScrapeArtifact = typeof scrapeArtifacts.$inferSelect
 
@@ -82,7 +83,7 @@ function asMetadata(value: unknown): ScrapeMetadata {
 
 export async function insertScrapeArtifact(
   capture: ScrapeCapture,
-  client: DbClient = db,
+  client: DbClient,
 ): Promise<ScrapeArtifact> {
   const [artifact] = await client.insert(scrapeArtifacts).values(capture).returning()
   return artifact
@@ -90,7 +91,7 @@ export async function insertScrapeArtifact(
 
 export async function readScrape(
   input: { scrapeId: string; userId: string },
-  client: DbClient = db,
+  client: DbClient,
 ): Promise<ScrapeArtifact> {
   const [artifact] = await client
     .select()
@@ -121,7 +122,7 @@ export type ScrapeSummary = {
 
 export async function readScrapeList(
   input: { userId: string; limit?: number },
-  client: DbClient = db,
+  client: DbClient,
 ): Promise<ScrapeSummary[]> {
   return client
     .select({
@@ -138,7 +139,7 @@ export async function readScrapeList(
 
 export async function removeScrape(
   input: { scrapeId: string; userId: string },
-  client: DbClient = db,
+  client: DbClient,
 ): Promise<{ ok: true }> {
   // 404 rather than 403: a 403 confirms the row exists.
   const deleted = await client
@@ -163,7 +164,7 @@ export const getScrape = createServerFn({ method: "GET" })
   })
   .handler(async ({ data, context }): Promise<ScrapeDetail> => {
     const user = requireUser({ context })
-    const artifact = await readScrape({ scrapeId: data.scrapeId, userId: user.id })
+    const artifact = await readScrape({ scrapeId: data.scrapeId, userId: user.id }, await appDb())
 
     return {
       id: artifact.id,
@@ -179,7 +180,7 @@ export const listScrapes = createServerFn({ method: "GET" })
   .validator((input: { limit?: number } = {}) => input)
   .handler(async ({ data, context }) => {
     const user = requireUser({ context })
-    return readScrapeList({ userId: user.id, limit: data.limit })
+    return readScrapeList({ userId: user.id, limit: data.limit }, await appDb())
   })
 
 export const deleteScrape = createServerFn({ method: "POST" })
@@ -189,7 +190,7 @@ export const deleteScrape = createServerFn({ method: "POST" })
   })
   .handler(async ({ data, context }) => {
     const user = requireUser({ context })
-    return removeScrape({ scrapeId: data.scrapeId, userId: user.id })
+    return removeScrape({ scrapeId: data.scrapeId, userId: user.id }, await appDb())
   })
 
 /**
@@ -228,7 +229,7 @@ export const createScrape = createServerFn({ method: "POST" })
         key: `scrape:${client}`,
         limit: 5,
         windowSeconds: 60,
-      })
+      }, await appDb())
       if (!allowed) return failure("RATE_LIMITED", ERROR_CODES.RATE_LIMITED)
 
       // Validate before anything is spent, so a private or malformed URL cannot
@@ -246,7 +247,7 @@ export const createScrape = createServerFn({ method: "POST" })
 
       // The credit gate, before any browser is launched. `consume_quota` locks
       // the entitlement row, so two clicks cannot both pass.
-      const quota = await consumeQuota({ userId: user.id, kind: "scrape" })
+      const quota = await consumeQuota({ userId: user.id, kind: "scrape" }, await appDb())
       if (!quota.allowed) {
         return failure("QUOTA_EXCEEDED", ERROR_CODES.QUOTA_EXCEEDED)
       }
@@ -257,7 +258,7 @@ export const createScrape = createServerFn({ method: "POST" })
       } catch (error) {
         // The scrape never produced anything, so the credit was never really
         // used. Idempotent and clamped at zero, so a repeat is harmless.
-        await refundQuota({ userId: user.id, kind: "scrape" }).catch(() => undefined)
+        await refundQuota({ userId: user.id, kind: "scrape" }, await appDb()).catch(() => undefined)
         if (error instanceof AppError) {
           return failure(error.code, error.message)
         }
@@ -273,11 +274,11 @@ export const createScrape = createServerFn({ method: "POST" })
           html: captured.html,
           previewHtml: captured.previewHtml,
           metadata: captured.metadata,
-        })
+        }, await appDb())
       } catch {
         // The scrape succeeded and the write did not. Saying "website blocked"
         // here would send the user off to fix a URL that was never the problem.
-        await refundQuota({ userId: user.id, kind: "scrape" }).catch(() => undefined)
+        await refundQuota({ userId: user.id, kind: "scrape" }, await appDb()).catch(() => undefined)
         return failure("STORAGE_FAILED", ERROR_CODES.STORAGE_FAILED)
       }
 

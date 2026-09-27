@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { HeadContent, createRootRoute, Scripts } from "@tanstack/react-router"
 import { useState, type ReactNode } from "react"
 import { RouteError, RouteNotFound } from "~/components/route-error"
-import { getSession } from "~/auth/middleware"
+import { getSession } from "~/auth/session-fn"
 import globalCss from "~/styles/globals.css?url"
 
 export const Route = createRootRoute({

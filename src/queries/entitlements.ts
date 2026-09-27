@@ -1,9 +1,10 @@
 import { createServerFn } from "@tanstack/react-start"
 import { and, eq, sql } from "drizzle-orm"
-import { db, type DbClient } from "~/db"
+import type { DbClient } from "~/db"
 import { paymentTransactions, userEntitlements } from "~/db/schema"
 import { failure, type ActionResult } from "~/lib/errors"
 import { createSnapTransaction, getTransactionStatus } from "~/lib/midtrans"
+import { appDb } from "~/queries/app-db"
 
 export type QuotaKind = "designmd" | "scrape"
 
@@ -43,7 +44,7 @@ export type Entitlement = {
  */
 export async function consumeQuota(
   input: { userId: string; kind: QuotaKind },
-  client: DbClient = db,
+  client: DbClient,
 ): Promise<QuotaResult> {
   const rows = await client.execute<{ result: unknown }>(
     sql`select public.consume_quota(${input.userId}::uuid, ${input.kind}::text) as result`,
@@ -53,7 +54,7 @@ export async function consumeQuota(
 
 export async function refundQuota(
   input: { userId: string; kind: QuotaKind },
-  client: DbClient = db,
+  client: DbClient,
 ): Promise<{ ok: true }> {
   await client.execute(
     sql`select public.refund_quota(${input.userId}::uuid, ${input.kind}::text)`,
@@ -97,7 +98,7 @@ function normaliseQuota(value: unknown): QuotaResult {
  */
 export async function getEntitlement(
   input: { userId: string },
-  client: DbClient = db,
+  client: DbClient,
 ): Promise<Entitlement> {
   const [row] = await client.execute<{
     user_id: string
@@ -124,6 +125,45 @@ function window_(used: number, quota: number | null): QuotaWindow {
   if (quota == null) return { used, quota: null, remaining: null }
   return { used, quota, remaining: Math.max(0, quota - used) }
 }
+
+/**
+ * `getEntitlement` as a server function, for route loaders.
+ *
+ * **Loaders must import this, not `getEntitlement`.** A loader runs on the
+ * client during an in-app navigation, so anything it reaches statically lands in
+ * `dist/client`. `getEntitlement` is a plain async function, so the Start
+ * plugin's server-function transform cannot separate it from its `~/db` import,
+ * and the `postgres` driver plus all fifteen `pgTable` definitions end up in the
+ * client bundle — where two of them throw on evaluation and hydration dies on
+ * every route, invisibly to `tsc`, `vitest`, `eslint`, `vite build` and an
+ * `HTTP 200` on `/`.
+ *
+ * This mirrors `src/queries/plans.ts`, which pairs a plain `readPlanCatalogue`
+ * with a thin `listPlans` for the same reason. `getEntitlement` stays plain
+ * because the worker and the tests call it with an explicit `client`.
+ *
+ * `userId` comes from the caller's session, never from a query parameter, so the
+ * input is deliberately empty -- there is nothing a client could usefully add.
+ */
+/**
+ * The signed-in user's entitlement, or `null` when there is no session.
+ *
+ * **`null`, not `notFound()`.** `/` and `/pricing` are public: a signed-out
+ * visitor must still see the plan catalogue and the free tier. Raising the
+ * router's not-found payload here made the homepage itself answer 404, which is
+ * how the mistake was found -- every other gate was green, because the failure
+ * only appears in a rendered response. Entitlement is a display concern on those
+ * routes, not a protected resource; the routes that do require a session say so
+ * in their own `beforeLoad` guard, which is where a 404 belongs.
+ */
+export const getEntitlementFn = createServerFn({ method: "GET" })
+  .handler(async (): Promise<Entitlement | null> => {
+    const { getRequestHeaders } = await import("@tanstack/react-start/server")
+    const { resolveSession } = await import("~/auth/middleware")
+    const session = await resolveSession(getRequestHeaders())
+    if (!session?.user) return null
+    return getEntitlement({ userId: session.user.id }, await appDb())
+  })
 
 type PlanQuotas = { designmd_quota: number | null; scrape_quota: number | null }
 
@@ -161,7 +201,7 @@ async function readPlanWindows(
  */
 export async function claimPaymentForUpgrade(
   input: { userId: string; orderId: string },
-  client: DbClient = db,
+  client: DbClient,
 ): Promise<{ claimed: boolean; plan: string }> {
   const claimed = await client
     .update(paymentTransactions)
@@ -193,7 +233,7 @@ export async function claimPaymentForUpgrade(
 
 export async function insertPaymentTransaction(
   input: { userId: string; orderId: string; plan: string; grossAmount: number },
-  client: DbClient = db,
+  client: DbClient,
 ) {
   const [row] = await client
     .insert(paymentTransactions)
@@ -233,11 +273,11 @@ export const createPayment = createServerFn({ method: "POST" })
         key: `payment-create:${user.id}`,
         limit: 5,
         windowSeconds: 60,
-      })
+      }, await appDb())
       if (!allowed) return failure("RATE_LIMITED", "Terlalu banyak percobaan.")
 
       const { readPlan } = await import("./plans")
-      const target = await readPlan(data.plan)
+      const target = await readPlan(data.plan, await appDb())
       if (!target || target.price_idr <= 0) {
         return failure("INVALID_PLAN", "Paket tidak tersedia.")
       }
@@ -259,7 +299,7 @@ export const createPayment = createServerFn({ method: "POST" })
           orderId,
           plan: target.plan,
           grossAmount: target.price_idr,
-        })
+        }, await appDb())
       } catch {
         return failure("PAYMENT_INIT_FAILED", "Gagal memulai pembayaran. Coba lagi.")
       }
@@ -282,7 +322,7 @@ export const createPayment = createServerFn({ method: "POST" })
 
 /** The buyer's current plan, read for the upgrade-only check. */
 async function currentPlanFor(userId: string): Promise<string> {
-  const [row] = await db
+  const [row] = await (await appDb())
     .select({ plan: userEntitlements.plan })
     .from(userEntitlements)
     .where(eq(userEntitlements.userId, userId))
@@ -316,10 +356,10 @@ export const verifyPayment = createServerFn({ method: "POST" })
         key: `verify:${user.id}`,
         limit: 10,
         windowSeconds: 60,
-      })
+      }, await appDb())
       if (!allowed) return failure("RATE_LIMITED", "Terlalu banyak percobaan.")
 
-      const [tx] = await db
+      const [tx] = await (await appDb())
         .select({
           plan: paymentTransactions.plan,
           status: paymentTransactions.status,
@@ -353,7 +393,7 @@ export const verifyPayment = createServerFn({ method: "POST" })
         return { ok: true, status: transactionStatus, plan: null, transactionStatus }
       }
 
-      const claim = await claimPaymentForUpgrade({ userId: user.id, orderId: data.orderId })
+      const claim = await claimPaymentForUpgrade({ userId: user.id, orderId: data.orderId }, await appDb())
       return {
         ok: true,
         status: "paid",

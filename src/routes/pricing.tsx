@@ -55,13 +55,13 @@ async function loadPricing() {
 
   return {
     plans: plans.length > 0 ? plans : DEFAULT_PLANS,
-    currentPlan: user ? await currentPlanOf(user.id) : "free",
+    currentPlan: user ? await currentPlanOf() : "free",
   }
 }
 
-async function currentPlanOf(userId: string): Promise<string> {
-  const { getEntitlement } = await import("~/queries/entitlements");
-  return (await getEntitlement({ userId })).plan;
+async function currentPlanOf(): Promise<string> {
+    const { getEntitlementFn } = await import("~/queries/entitlements")
+    return (await getEntitlementFn())?.plan ?? "free"
 }
 
 const DEFAULT_PLANS: Plan[] = [

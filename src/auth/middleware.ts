@@ -1,8 +1,6 @@
-import { createServerFn } from "@tanstack/react-start"
 import { createMiddleware } from "@tanstack/react-start"
 import { getRequestHeaders } from "@tanstack/react-start/server"
-import { auth } from "./server"
-import type { Session, SessionUser } from "./guard"
+import type { Session } from "./guard"
 
 /**
  * Session resolution, and the per-request cache in front of it.
@@ -82,8 +80,27 @@ export function cachedSession(
   return pending
 }
 
-const defaultResolver: SessionResolver = (headers) =>
-  auth.api.getSession({ headers }) as Promise<Session | null>
+/**
+ * Resolves the session through the Better Auth instance, **imported lazily**.
+ *
+ * This module is unavoidably in the client bundle: `src/start.ts` imports it, and
+ * the Start plugin puts `start.ts` in the client graph because function
+ * middleware runs there too (that is what makes an in-app navigation hit the same
+ * guard a full page load does). A top-level `import { auth } from "./server"`
+ * therefore links the whole Better Auth server, the `postgres` driver and all
+ * fifteen `pgTable` definitions into `dist/client`, where two of them throw on
+ * evaluation and hydration dies on every route.
+ *
+ * A dynamic import alone is not sufficient in general -- a bundler treats it as a
+ * loading boundary, not an elimination boundary, and ships the module as a lazy
+ * chunk. It works here because this function is only ever reached from
+ * `authMiddleware`'s `.server()` body, which the Start plugin strips from the
+ * client build along with everything it references.
+ */
+const defaultResolver: SessionResolver = async (headers) => {
+  const { auth } = await import("./server")
+  return auth.api.getSession({ headers }) as Promise<Session | null>
+}
 
 /** The session for this request, or `null`. Resolved at most once per request. */
 export function resolveSession(
@@ -92,29 +109,6 @@ export function resolveSession(
 ): Promise<Session | null> {
   return cachedSession(requestHeaders, resolve)
 }
-
-/**
- * The session, as a server function, for the root route's `beforeLoad`.
- *
- * A server function rather than a direct `resolveSession(getRequestHeaders())`
- * call in the loader, and that is the whole trick. During SSR Start invokes a
- * server function in-process, so the middleware context is populated and the
- * lookup is the cached one; on the client it is an RPC to the same origin, which
- * is what makes the guard work on an in-app navigation as well as on a full page
- * load. A loader that reached for `getRequestHeaders()` directly would be a
- * static import of `@tanstack/react-start/server` in the client graph, which the
- * Start plugin's import protection refuses outright.
- *
- * It reads `context.user` rather than calling `resolveSession` again, so it adds
- * no lookup of its own -- the middleware already resolved the session for the
- * request, and reading the result is free.
- */
-export const getSession = createServerFn({ method: "GET" }).handler(
-  async ({ context }): Promise<Session> => {
-    const user = context.user as SessionUser | null | undefined
-    return { user: user ?? null }
-  },
-)
 
 /**
  * Makes the session available to every server function. It does not decide

@@ -23,6 +23,7 @@ import { Route as SettingRouteImport } from './routes/setting'
 import { Route as TemplateRouteImport } from './routes/template'
 import { Route as TentangRouteImport } from './routes/tentang'
 import { Route as GenerationsIdRouteImport } from './routes/generations.$id'
+import { Route as ApiAuthSplatRouteImport } from './routes/api/auth.$'
 import { Route as ApiScrapeAssetRouteImport } from './routes/api/scrape.asset'
 import { Route as ApiScrapePreviewRouteImport } from './routes/api/scrape.preview'
 import { Route as ApiScreenshotSplatRouteImport } from './routes/api/screenshot.$'
@@ -99,6 +100,11 @@ const GenerationsIdRoute = GenerationsIdRouteImport.update({
   path: '/generations/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
+  id: '/api/auth/$',
+  path: '/api/auth/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiScrapeAssetRoute = ApiScrapeAssetRouteImport.update({
   id: '/api/scrape/asset',
   path: '/api/scrape/asset',
@@ -141,6 +147,7 @@ export interface FileRoutesByFullPath {
   '/template': typeof TemplateRoute
   '/tentang': typeof TentangRoute
   '/generations/$id': typeof GenerationsIdRoute
+  '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/scrape/asset': typeof ApiScrapeAssetRoute
   '/api/scrape/preview': typeof ApiScrapePreviewRoute
   '/api/screenshot/$': typeof ApiScreenshotSplatRoute
@@ -162,6 +169,7 @@ export interface FileRoutesByTo {
   '/template': typeof TemplateRoute
   '/tentang': typeof TentangRoute
   '/generations/$id': typeof GenerationsIdRoute
+  '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/scrape/asset': typeof ApiScrapeAssetRoute
   '/api/scrape/preview': typeof ApiScrapePreviewRoute
   '/api/screenshot/$': typeof ApiScreenshotSplatRoute
@@ -184,6 +192,7 @@ export interface FileRoutesById {
   '/template': typeof TemplateRoute
   '/tentang': typeof TentangRoute
   '/generations/$id': typeof GenerationsIdRoute
+  '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/scrape/asset': typeof ApiScrapeAssetRoute
   '/api/scrape/preview': typeof ApiScrapePreviewRoute
   '/api/screenshot/$': typeof ApiScreenshotSplatRoute
@@ -207,6 +216,7 @@ export interface FileRouteTypes {
     | '/template'
     | '/tentang'
     | '/generations/$id'
+    | '/api/auth/$'
     | '/api/scrape/asset'
     | '/api/scrape/preview'
     | '/api/screenshot/$'
@@ -228,6 +238,7 @@ export interface FileRouteTypes {
     | '/template'
     | '/tentang'
     | '/generations/$id'
+    | '/api/auth/$'
     | '/api/scrape/asset'
     | '/api/scrape/preview'
     | '/api/screenshot/$'
@@ -249,6 +260,7 @@ export interface FileRouteTypes {
     | '/template'
     | '/tentang'
     | '/generations/$id'
+    | '/api/auth/$'
     | '/api/scrape/asset'
     | '/api/scrape/preview'
     | '/api/screenshot/$'
@@ -271,6 +283,7 @@ export interface RootRouteChildren {
   TemplateRoute: typeof TemplateRoute
   TentangRoute: typeof TentangRoute
   GenerationsIdRoute: typeof GenerationsIdRoute
+  ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiScrapeAssetRoute: typeof ApiScrapeAssetRoute
   ApiScrapePreviewRoute: typeof ApiScrapePreviewRoute
   ApiScreenshotSplatRoute: typeof ApiScreenshotSplatRoute
@@ -378,6 +391,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof GenerationsIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/auth/$': {
+      id: '/api/auth/$'
+      path: '/api/auth/$'
+      fullPath: '/api/auth/$'
+      preLoaderRoute: typeof ApiAuthSplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/scrape/asset': {
       id: '/api/scrape/asset'
       path: '/api/scrape/asset'
@@ -431,6 +451,7 @@ const rootRouteChildren: RootRouteChildren = {
   TemplateRoute: TemplateRoute,
   TentangRoute: TentangRoute,
   GenerationsIdRoute: GenerationsIdRoute,
+  ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiScrapeAssetRoute: ApiScrapeAssetRoute,
   ApiScrapePreviewRoute: ApiScrapePreviewRoute,
   ApiScreenshotSplatRoute: ApiScreenshotSplatRoute,

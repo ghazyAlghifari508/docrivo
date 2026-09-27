@@ -69,27 +69,36 @@ export function securityHeadersFor(
 }
 
 /**
- * Copies `headers` onto `response`.
+ * Copies `headers` onto `response` as **defaults**, never as overrides.
+ *
+ * A header the response already carries wins. This is load-bearing: the request
+ * middleware in `src/start.ts` runs on every response, so a route that sets its
+ * own `Content-Security-Policy` had it replaced on the way out. For
+ * `/api/scrape/asset` the route sets `sandbox; default-src 'none'` because it
+ * echoes arbitrary third-party bytes at this origin, and the global default
+ * arriving afterwards replaced it with `script-src 'self' 'unsafe-inline'
+ * 'unsafe-eval'` -- turning the proxy into active HTML with script execution at
+ * the app's own origin. `has()` is the test rather than a truthiness check on
+ * the value, so a route that deliberately set an empty string still wins.
  *
  * The response is rebuilt rather than mutated in place: a `Response` that
  * arrived from a redirect or a static-asset handler has an immutable `Headers`
  * guard, and a `TypeError` here would take down every request. Rebuilding
- * preserves status, body and existing headers, and `getSetCookie()` keeps
- * Better Auth's session cookie intact -- a plain `Headers` copy would collapse
- * repeated `Set-Cookie` values into one.
+ * preserves status, body and existing headers.
+ *
+ * `new Headers(response.headers)` already carries every `Set-Cookie`, and it
+ * keeps them separate -- a field-by-field copy is what would collapse repeated
+ * values into one. Re-appending them here, as an earlier version did, sent each
+ * session cookie twice.
  */
 export function withSecurityHeaders(
   response: Response,
   headers: ReadonlyArray<readonly [string, string]>,
 ): Response {
   const merged = new Headers(response.headers)
-  for (const [key, value] of headers) {
-    merged.set(key, value)
-  }
 
-  const setCookie = response.headers.getSetCookie?.() ?? []
-  for (const cookie of setCookie) {
-    merged.append("Set-Cookie", cookie)
+  for (const [key, value] of headers) {
+    if (!merged.has(key)) merged.set(key, value)
   }
 
   return new Response(response.body, {

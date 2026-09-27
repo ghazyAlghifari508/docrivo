@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start"
 import { notFound } from "@tanstack/react-router"
 import { and, asc, desc, eq, sql } from "drizzle-orm"
-import { db, type DbClient } from "~/db"
+import type { DbClient } from "~/db"
 import {
   crawledPages,
   extractedAssets,
@@ -13,6 +13,7 @@ import { ERROR_CODES, failure, type ActionResult } from "~/lib/errors"
 import { validateUrl } from "~/lib/url-validator"
 import { consumeQuota, refundQuota } from "./entitlements"
 import { checkRateLimit } from "./rate-limit"
+import { appDb } from "~/queries/app-db"
 
 export type Job = typeof generationJobs.$inferSelect
 
@@ -54,7 +55,7 @@ export async function insertGeneration(
     maxPages?: number
     outputLanguage?: string
   },
-  client: DbClient = db,
+  client: DbClient,
 ): Promise<Job> {
   const [job] = await client
     .insert(generationJobs)
@@ -74,7 +75,7 @@ export async function insertGeneration(
 
 export async function readOwnedJob(
   input: { jobId: string; userId: string },
-  client: DbClient = db,
+  client: DbClient,
 ): Promise<Job> {
   const [job] = await client
     .select()
@@ -94,7 +95,7 @@ export async function readOwnedJob(
 
 export async function readJobList(
   input: { userId: string; limit?: number },
-  client: DbClient = db,
+  client: DbClient,
 ): Promise<Job[]> {
   return client
     .select()
@@ -106,7 +107,7 @@ export async function readJobList(
 
 export async function removeJob(
   input: { jobId: string; userId: string },
-  client: DbClient = db,
+  client: DbClient,
 ): Promise<{ ok: true }> {
   // 404 rather than 403: a 403 confirms the row exists.
   const deleted = await client
@@ -139,7 +140,7 @@ export async function removeJob(
  * minutes. That recovery lives in the database, next to the claim, so the two
  * cannot drift apart.
  */
-export async function claimNextJobRow(client: DbClient = db): Promise<Job | null> {
+export async function claimNextJobRow(client: DbClient): Promise<Job | null> {
   const rows = await client.execute<{ id: string }>(
     sql`select (public.claim_next_job()).id as id`,
   )
@@ -155,7 +156,7 @@ export async function claimNextJobRow(client: DbClient = db): Promise<Job | null
   return job ?? null
 }
 
-export async function readJobPages(jobId: string, client: DbClient = db) {
+export async function readJobPages(jobId: string, client: DbClient) {
   return client
     .select({
       id: crawledPages.id,
@@ -168,7 +169,7 @@ export async function readJobPages(jobId: string, client: DbClient = db) {
     .orderBy(asc(crawledPages.createdAt))
 }
 
-export async function readJobAssets(jobId: string, client: DbClient = db) {
+export async function readJobAssets(jobId: string, client: DbClient) {
   return client
     .select({
       id: extractedAssets.id,
@@ -182,7 +183,7 @@ export async function readJobAssets(jobId: string, client: DbClient = db) {
     .orderBy(asc(extractedAssets.createdAt))
 }
 
-export async function readJobDocument(jobId: string, client: DbClient = db) {
+export async function readJobDocument(jobId: string, client: DbClient) {
   const [document] = await client
     .select({
       designMd: generatedDocuments.designMd,
@@ -220,7 +221,7 @@ export type AdminJob = {
 
 export async function readRecentJobs(
   input: { limit?: number },
-  client: DbClient = db,
+  client: DbClient,
 ): Promise<AdminJob[]> {
   return client
     .select({
@@ -254,7 +255,7 @@ export const listRecentJobs = createServerFn({ method: "GET" })
   .validator((input: { limit?: number }) => input ?? {})
   .handler(async ({ data, context }) => {
     requireAdmin(context.user ? { email: context.user.email } : null)
-    return readRecentJobs({ limit: data.limit ?? 30 })
+    return readRecentJobs({ limit: data.limit ?? 30 }, await appDb())
   })
 
 /**
@@ -278,14 +279,14 @@ export const getOwnedJob = createServerFn({ method: "GET" })
     // The ownership check runs first and alone. If it raises, nothing about the
     // job's contents is read, so a caller who does not own it learns nothing
     // beyond the id not being theirs.
-    const job = await readOwnedJob({ jobId: data.jobId, userId: user.id })
+    const job = await readOwnedJob({ jobId: data.jobId, userId: user.id }, await appDb())
 
     // `allSettled`, not `all`: a failed child query must not hide an existing
     // DESIGN.md from the polling client. Each falls back to empty or null.
     const [pages, assets, document] = await Promise.allSettled([
-      readJobPages(job.id),
-      readJobAssets(job.id),
-      readJobDocument(job.id),
+      readJobPages(job.id, await appDb()),
+      readJobAssets(job.id, await appDb()),
+      readJobDocument(job.id, await appDb()),
     ])
 
     return {
@@ -308,7 +309,7 @@ export const listJobs = createServerFn({ method: "GET" })
   .validator((input: { limit?: number }) => input ?? {})
   .handler(async ({ data, context }) => {
     const user = requireUser({ context })
-    return readJobList({ userId: user.id, limit: data.limit })
+    return readJobList({ userId: user.id, limit: data.limit }, await appDb())
   })
 
 export const deleteJob = createServerFn({ method: "POST" })
@@ -318,7 +319,7 @@ export const deleteJob = createServerFn({ method: "POST" })
   })
   .handler(async ({ data, context }) => {
     const user = requireUser({ context })
-    return removeJob({ jobId: data.jobId, userId: user.id })
+    return removeJob({ jobId: data.jobId, userId: user.id }, await appDb())
   })
 
 /**
@@ -349,7 +350,7 @@ export const createGeneration = createServerFn({ method: "POST" })
         key: `generations:${user.id}`,
         limit: 5,
         windowSeconds: 60,
-      })
+      }, await appDb())
       if (!allowed) return failure("RATE_LIMITED", ERROR_CODES.RATE_LIMITED)
 
       // Validate before anything is spent, so a typo cannot consume quota.
@@ -367,7 +368,7 @@ export const createGeneration = createServerFn({ method: "POST" })
       // increments if the plan's quota has room, so two clicks cannot both pass.
       // It sits after the URL check on purpose: an unusable URL must not cost a
       // credit.
-      const quota = await consumeQuota({ userId: user.id, kind: "designmd" })
+      const quota = await consumeQuota({ userId: user.id, kind: "designmd" }, await appDb())
       if (!quota.allowed) {
         return failure("QUOTA_EXCEEDED", ERROR_CODES.QUOTA_EXCEEDED)
       }
@@ -379,12 +380,12 @@ export const createGeneration = createServerFn({ method: "POST" })
           normalizedDomain,
           maxPages: data.maxPages,
           outputLanguage: data.outputLanguage,
-        })
+        }, await appDb())
         return { ok: true, jobId: job.id, status: job.status }
       } catch (error) {
         // The credit is spent and no job exists, so give it back. `refund_quota`
         // is idempotent and clamps at zero, so a repeat is harmless.
-        await refundQuota({ userId: user.id, kind: "designmd" }).catch(() => undefined)
+        await refundQuota({ userId: user.id, kind: "designmd" }, await appDb()).catch(() => undefined)
         throw error
       }
     },
@@ -396,4 +397,4 @@ export const createGeneration = createServerFn({ method: "POST" })
  * user id because the queue is not user-scoped.
  */
 export const claimNextJob = createServerFn({ method: "POST" })
-  .handler(async (): Promise<Job | null> => claimNextJobRow())
+    .handler(async (): Promise<Job | null> => claimNextJobRow(await appDb()))

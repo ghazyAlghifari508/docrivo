@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start"
 import { sql } from "drizzle-orm"
-import { db, type DbClient } from "~/db"
+import type { DbClient } from "~/db"
+import { appDb } from "~/queries/app-db"
 
 /**
  * The plan catalogue, as the row `public.list_plans()` returns: every column of
@@ -26,14 +27,14 @@ export type Plan = {
  * for the connecting role. Replacing it with a plain select would reintroduce the
  * policy the function exists to avoid.
  */
-export async function readPlanCatalogue(client: DbClient = db): Promise<Plan[]> {
+export async function readPlanCatalogue(client: DbClient): Promise<Plan[]> {
   return client.execute<Plan>(sql`select * from public.list_plans()`)
 }
 
 /** One plan by name, or `null`. Used to price a purchase server-side. */
 export async function readPlan(
   plan: string,
-  client: DbClient = db,
+  client: DbClient,
 ): Promise<Plan | null> {
   const [row] = await client.execute<Plan>(
     sql`select * from public.list_plans() where plan = ${plan}`,
@@ -42,4 +43,4 @@ export async function readPlan(
 }
 
 export const listPlans = createServerFn({ method: "GET" })
-  .handler(async (): Promise<Plan[]> => readPlanCatalogue())
+  .handler(async (): Promise<Plan[]> => readPlanCatalogue(await appDb()))

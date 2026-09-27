@@ -39,7 +39,7 @@ import { guardLocation, requireSession } from "~/auth/guard";
 import { RouteError, RouteNotFound } from "~/components/route-error";
 import { listJobs } from "~/queries/jobs";
 import { listScrapes } from "~/queries/scrapes";
-import { getEntitlement } from "~/queries/entitlements";
+import { getEntitlementFn } from "~/queries/entitlements";
 import { listPlans } from "~/queries/plans";
 import { getProfile } from "~/queries/profile";
 
@@ -68,7 +68,7 @@ async function loadSetting() {
 
   const [plans, entitlement, generations, scrapes] = await Promise.all([
     listPlans({ data: undefined }).catch(() => []),
-    getEntitlement({ userId: user.id }).catch(() => null),
+    getEntitlementFn().catch(() => null),
     listJobs({ data: {} }).catch(() => []),
     listScrapes({ data: {} }).catch(() => []),
   ])

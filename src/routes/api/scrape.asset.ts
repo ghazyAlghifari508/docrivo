@@ -3,6 +3,7 @@ import { AppError } from "~/lib/errors"
 import { fetchAsset as fetchAssetFn } from "~/lib/fetch-html"
 import { rewriteCssUrls } from "~/lib/preview-html"
 import { checkRateLimit } from "~/queries/rate-limit"
+import { appDb } from "~/queries/app-db"
 
 /**
  * `GET /api/scrape/asset` -- one proxied asset for the sandboxed preview.
@@ -58,7 +59,7 @@ export async function GET(
       key: `scrape-asset:${ip}`,
       limit: 1000,
       windowSeconds: 60,
-    })
+    }, await appDb())
     if (!allowed) return new Response("Rate limited", { status: 429, headers: ASSET_HEADERS })
 
     const { body, status, contentType } = await fetchAsset(target)

@@ -30,7 +30,7 @@ import { SiteFooter } from "~/components/site-footer";
 import { TemplateLock } from "~/components/template-lock";
 import { guardLocation, requireSession } from "~/auth/guard";
 import { listPlans } from "~/queries/plans";
-import { getEntitlement } from "~/queries/entitlements";
+import { getEntitlementFn } from "~/queries/entitlements";
 import { getProfile } from "~/queries/profile";
 
 /**
@@ -46,7 +46,7 @@ async function loadTemplate() {
 
   const [plans, entitlement] = await Promise.all([
     listPlans({ data: undefined }).catch(() => []),
-    getEntitlement({ userId: user.id }).catch(() => null),
+    getEntitlementFn().catch(() => null),
   ])
 
   const unlocked =

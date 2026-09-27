@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start"
 import { sql } from "drizzle-orm"
-import { db, type DbClient } from "~/db"
+import type { DbClient } from "~/db"
+import { appDb } from "~/queries/app-db"
 
 /**
  * Calls the existing `public.hit_rate_limit(key, limit, window_seconds)` RPC.
@@ -14,7 +15,7 @@ import { db, type DbClient } from "~/db"
  */
 export async function checkRateLimit(
   input: { key: string; limit: number; windowSeconds: number },
-  client: DbClient = db,
+  client: DbClient,
 ): Promise<boolean> {
   const rows = await client.execute<{ allowed: boolean }>(
     sql`select public.hit_rate_limit(${input.key}, ${input.limit}::int, ${input.windowSeconds}::int) as allowed`,
@@ -37,4 +38,4 @@ export const hitRateLimit = createServerFn({ method: "GET" })
     if (!input?.key) throw new Error("key is required")
     return input
   })
-  .handler(async ({ data }) => checkRateLimit(data))
+  .handler(async ({ data }) => checkRateLimit(data, await appDb()))

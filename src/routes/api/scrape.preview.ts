@@ -3,6 +3,7 @@ import { AppError, ERROR_CODES } from "~/lib/errors"
 import { scrapeHtml } from "~/lib/fetch-html"
 import { rewritePreviewAssets } from "~/lib/preview-html"
 import { checkRateLimit } from "~/queries/rate-limit"
+import { appDb } from "~/queries/app-db"
 
 /**
  * `GET|POST /api/scrape/preview` -- a single third-party page, fetched and
@@ -104,7 +105,7 @@ async function render(
       key: `scrape-preview:${ip}`,
       limit: 5,
       windowSeconds: 60,
-    })
+    }, await appDb())
     if (!allowed) return htmlError(ERROR_CODES.RATE_LIMITED, 429)
 
     const { html, sourceUrl } = await scrapeHtml(rawUrl)
