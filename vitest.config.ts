@@ -2,13 +2,14 @@ import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
-  // `tsconfig.json` maps `@/*` to `./src/*`, which Next.js honours. Vite does
-  // not read tsconfig paths, so without this any test that reaches a module
-  // using the alias fails on `Cannot find package '@/db'` before it reaches the
-  // assertion. `schema.test.ts` imported `./index` relatively and never hit it.
+  // `tsconfig.json` maps `~/*` to `./src/*`. Vite does not read tsconfig paths,
+  // so without this any test that reaches a module using the alias fails on
+  // `Cannot find package '~/db'` before it reaches the assertion.
+  // `src/auth/middleware.test.ts` is the test that exercises it: it imports
+  // `./middleware`, which reaches `./server`, which imports `~/db`.
   resolve: {
     alias: {
-      "@": fileURLToPath(new URL("./src", import.meta.url)),
+      "~": fileURLToPath(new URL("./src", import.meta.url)),
     },
   },
   test: {

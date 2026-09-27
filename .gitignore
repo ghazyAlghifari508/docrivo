@@ -15,6 +15,12 @@
 
 # production
 /build
+# TanStack Start build output (`vite build` -> dist/client + dist/server)
+/dist
+/.output
+/.nitro
+/.tanstack
+/.vinxi
 
 # misc
 .DS_Store

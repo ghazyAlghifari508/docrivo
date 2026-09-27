@@ -1,0 +1,224 @@
+@import "tailwindcss";
+
+/* Design tokens - sourced from docs/DESIGN.md (Brainfish lime-editorial system). */
+@theme {
+  --color-lime-sprint: #a3e635;
+  --color-paper-white: #ffffff;
+  --color-cream: #fcfff7;
+  --color-ink: #262626;
+  --color-black-ink: #000000;
+  --color-depth: #303030;
+  --color-rule: #e5e5e5;
+  --color-muted: #525252;
+  --color-muted-gray: #737373;
+  --color-mint-edge: #7ee2b8;
+  --color-mint-wash: #dcfff1;
+
+  --font-geist: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-fraunces: var(--font-fraunces), ui-serif, Georgia, serif;
+
+  --text-caption: 14px;
+  --leading-caption: 1.14;
+  --text-body-sm: 16px;
+  --leading-body-sm: 1.25;
+  --text-body: 18px;
+  --leading-body: 1.55;
+  --text-subheading: 20px;
+  --leading-subheading: 1.5;
+  --text-heading-sm: 28px;
+  --leading-heading-sm: 1.14;
+  --tracking-heading-sm: -0.56px;
+  --text-heading: 36px;
+  --leading-heading: 1.14;
+  --tracking-heading: -0.18px;
+  --text-heading-lg: 48px;
+  --leading-heading-lg: 1.08;
+  --tracking-heading-lg: -0.96px;
+  --text-display: 56px;
+  --leading-display: 1.16;
+  --tracking-display: -0.28px;
+
+  --radius-tags: 9999px;
+  --radius-cards: 8px;
+  --radius-pills: 9999px;
+  --radius-inputs: 4px;
+  --radius-buttons: 4px;
+
+  --shadow-hard: 2px 2px 0 0 rgb(38 38 38);
+  --shadow-hard-lg: 4px 4px 0 0 rgb(38 38 38);
+  --shadow-hard-white: 2px 2px 0 0 rgb(255 255 255);
+}
+
+:root {
+  --page-max-width: 1200px;
+}
+
+html {
+  background: var(--color-paper-white);
+  color: var(--color-ink);
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  min-width: 320px;
+  font-family: var(--font-geist);
+  font-size: var(--text-body);
+  line-height: var(--leading-body);
+  background: var(--color-paper-white);
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+a {
+  cursor: pointer;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 3px;
+}
+
+::selection {
+  background: var(--color-lime-sprint);
+  color: var(--color-ink);
+}
+
+/* The site's typographic signature: one Fraunces italic word inside a Geist headline. */
+.emph {
+  font-family: var(--font-fraunces);
+  font-style: italic;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+.page-shell {
+  width: min(100% - 48px, var(--page-max-width));
+  margin-inline: auto;
+}
+
+/* Layered contour watermark uses a component; these tune the lime hero halo. */
+.hero-halo {
+  background:
+    radial-gradient(60% 55% at 82% 12%, rgb(163 230 53 / 0.55), transparent 70%),
+    radial-gradient(40% 40% at 68% 30%, rgb(220 255 241 / 0.6), transparent 70%);
+}
+
+/* Interactive press affordance for hard-shadow buttons. */
+.pressable {
+  transition: transform 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
+}
+.pressable:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: var(--shadow-hard-lg);
+}
+.pressable:active {
+  transform: translate(2px, 2px);
+  box-shadow: none;
+}
+
+.pressable-white:hover {
+  box-shadow: 4px 4px 0 0 rgb(255 255 255);
+}
+
+.link-underline {
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 4px;
+  transition: text-decoration-color 150ms ease;
+}
+.link-underline:hover {
+  text-decoration-color: currentColor;
+}
+
+/* Blinking lime caret for the typing hero headline. */
+.type-caret {
+  display: inline-block;
+  width: 3px;
+  height: 0.9em;
+  margin-left: 0.06em;
+  translate: 0 0.08em;
+  background: var(--color-lime-sprint);
+  animation: caret-blink 1s steps(1) infinite;
+}
+.type-caret-done {
+  animation-delay: 1.2s;
+  animation-fill-mode: forwards;
+}
+@keyframes caret-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+/* Abstract photo placeholder: paper-texture collage tile without copying Brainfish assets. */
+.photo-tile {
+  position: relative;
+  background:
+    radial-gradient(circle at 25% 20%, rgb(163 230 53 / 0.38), transparent 20rem),
+    linear-gradient(135deg, rgb(252 255 247) 0%, rgb(255 255 255) 45%, rgb(220 255 241) 100%);
+}
+.photo-tile::after {
+  content: "";
+  position: absolute;
+  inset: 18%;
+  border: 1px solid rgb(38 38 38 / 0.14);
+  border-radius: 999px;
+  transform: rotate(-18deg);
+}
+
+/* Gentle entrance motion without hiding below-fold content in full-page captures. */
+.reveal {
+  opacity: 1;
+  transform: none;
+  animation: reveal-rise 620ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.reveal-in {
+  opacity: 1;
+  transform: none;
+}
+@keyframes reveal-rise {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.marquee-track {
+  animation: marquee 32s linear infinite;
+}
+@keyframes marquee {
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .pressable,
+  .pressable:hover,
+  .pressable:active {
+    transform: none;
+  }
+  .marquee-track {
+    animation: none;
+  }
+  .type-caret {
+    display: none;
+  }
+  .reveal {
+    opacity: 1;
+    transform: none;
+    animation: none;
+    transition: none;
+  }
+}

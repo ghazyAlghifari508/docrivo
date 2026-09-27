@@ -13,6 +13,7 @@ const INTERNAL = /^\/(?![/\\])/
  * an internal path and resolves to `//evil.example`; the rest cannot survive a
  * round trip through a `Location` header intact.
  */
+// eslint-disable-next-line no-control-regex -- matching control characters is the point
 const CONTROLLED = /[\u0000-\u001f\u007f\u2028\u2029]/
 
 /**

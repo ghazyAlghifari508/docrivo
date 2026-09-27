@@ -1,7 +1,7 @@
 import { betterAuth } from "better-auth"
 import { drizzleAdapter } from "better-auth/adapters/drizzle"
-import { db } from "@/db"
-import * as authSchema from "@/db/schema-auth"
+import { db } from "~/db"
+import * as authSchema from "~/db/schema-auth"
 
 const appUrl = process.env.APP_URL ?? "http://localhost:3000"
 
