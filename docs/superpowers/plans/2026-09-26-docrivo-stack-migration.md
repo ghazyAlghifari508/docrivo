@@ -2091,19 +2091,31 @@ import { authClient } from "~/auth/client"
 import { safeNext } from "~/auth/redirect"
 
 export const Route = createFileRoute("/login")({
+  // `safeNext` returns null for a missing OR rejected target, and the two cases
+  // are indistinguishable here on purpose -- an attacker must not be able to
+  // tell "no next param" from "next was rejected". The consequence is that the
+  // `?? "/"` fallback below is a *product* decision, not a safety one, and it
+  // must be explicit. If this route ever falls back to "/" for a rejected
+  // target, the guard is bypassed at the call site and nothing in
+  // `src/auth/redirect.ts` catches it.
   validateSearch: (s: Record<string, unknown>) => ({
-    next: safeNext(typeof s.next === "string" ? s.next : null) ?? "/",
+    next: safeNext(typeof s.next === "string" ? s.next : null),
   }),
   component: LoginPage,
 })
 
 function LoginPage() {
   const { next } = Route.useSearch()
+  // Explicit branch, because null means both "no next" and "next rejected".
+  const destination = next ?? "/"
+
+  // Test both: a missing param and a rejected one must land on the same page,
+  // and a rejected one must never reach authClient.signIn.social.
 
   async function signInWithGoogle() {
     await authClient.signIn.social({
       provider: "google",
-      callbackURL: next,
+      callbackURL: destination,
     })
   }
 
