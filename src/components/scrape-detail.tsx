@@ -1,69 +1,35 @@
 "use client";
 
 import { Link, isNotFound } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, CircleNotch, Code, DownloadSimple, GlobeHemisphereWest, Warning } from "@phosphor-icons/react";
-import { getScrape } from "~/queries/scrapes";
-
-type ScrapeResult = {
-  id: string;
-  sourceUrl: string;
-  html: string;
-  previewHtml: string;
-  metadata: {
-    attempt: number;
-    capturedAt: string;
-    finalUrl: string;
-    viewport: { width: number; height: number };
-    captureMode: string;
-    htmlBytes: number;
-    previewHtmlBytes: number;
-  };
-  createdAt: string | Date;
-};
+import { scrapeQueryOptions } from "~/lib/queries/scrape";
 
 type ResultView = "preview" | "code";
 
 export function ScrapeDetail({ id }: { id: string }) {
-  const [item, setItem] = useState<ScrapeResult | null | undefined>(undefined);
-  const [error, setError] = useState("");
+  // One read, no poll: `createScrape` writes the artifact with the HTML already
+  // in hand, so there is no partial state to wait for. The factory says so in
+  // `refetchInterval: false`, which is what replaced the effect's liveness flag.
+  // `item` is typed from that factory's `queryFn`; the hand-written mirror of the
+  // artifact server function's return shape went with it.
+  const { data: item, error, isPending } = useQuery(scrapeQueryOptions(id));
   const [view, setView] = useState<ResultView>("preview");
   const [blobUrl, setBlobUrl] = useState("");
-  const blobRef = useRef("");
 
+  // The download link is a Blob of the stored HTML, which is the only way to hand
+  // the bytes back without a second route. The object URL is created when the
+  // artifact arrives and revoked when it changes or the view unmounts -- the same
+  // pairing the previous cleanup effect did with a ref.
   useEffect(() => {
-    let alive = true;
-    const run = async () => {
-      try {
-        // The ownership check lives in the server function, which raises the
-        // router's not-found payload for an artifact owned by somebody else and
-        // for an id that does not exist alike.
-        const artifact = await getScrape({ data: { scrapeId: id } });
-        if (!alive) return;
-        setItem(artifact);
-        const url = URL.createObjectURL(new Blob([artifact.html], { type: "text/html" }));
-        blobRef.current = url;
-        setBlobUrl(url);
-      } catch (error) {
-        if (!alive) return;
-        // A signed-out visitor gets a 401 from the server function, which is a
-        // different condition from "this artifact is not yours" and should not
-        // be reported as a missing scrape.
-        if (error instanceof Response || isNotFound(error)) {
-          setItem(null);
-          return;
-        }
-        setError("Gagal memuat hasil scrape. Coba muat ulang.");
-      }
-    };
-    void run();
-    return () => {
-      alive = false;
-      if (blobRef.current) URL.revokeObjectURL(blobRef.current);
-    };
-  }, [id]);
+    if (!item) return;
+    const url = URL.createObjectURL(new Blob([item.html], { type: "text/html" }));
+    setBlobUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [item]);
 
-  if (item === undefined) {
+  if (isPending) {
     return (
       <main id="main" className="grid min-h-[calc(100dvh-67px)] place-items-center bg-paper-white">
         <div className="flex items-center gap-3 text-body-sm text-muted">
@@ -74,16 +40,34 @@ export function ScrapeDetail({ id }: { id: string }) {
     );
   }
 
-  if (!item) {
+  if (error || !item) {
+    // Two distinct conditions reach this branch and the old copy merged them.
+    // A signed-out visitor gets a 401 from the server function, which is not the
+    // same thing as "this artifact is not yours". And a generic failure was
+    // unreachable before: `item` was only ever set to `null` for those two
+    // answers, so a socket hang left `item === undefined` and the loading spinner
+    // up forever. The message below already existed in this file, waiting behind
+    // that. `isNotFound` is the ownership answer and it covers both of its halves
+    // -- somebody else's artifact and an id that does not exist alike.
+    const signedOut = error instanceof Response;
+    const transient = !!error && !signedOut && !isNotFound(error);
     return (
       <main id="main" className="grid min-h-[calc(100dvh-67px)] place-items-center bg-paper-white px-6">
         <div className="max-w-sm text-center">
           <span className="mx-auto grid size-12 place-items-center rounded-buttons border border-ink bg-cream shadow-hard">
             <Warning size={22} weight="fill" aria-hidden="true" />
           </span>
-          <h1 className="mt-6 text-heading-sm font-semibold tracking-heading-sm">Hasil scrape tidak ditemukan.</h1>
+          <h1 className="mt-6 text-heading-sm font-semibold tracking-heading-sm">
+            {transient
+              ? "Gagal memuat hasil scrape."
+              : "Hasil scrape tidak ditemukan."}
+          </h1>
           <p className="mt-3 text-body-sm leading-7 text-muted">
-            {error || "Detail HTML ini cuma tersimpan di akun Google kamu. Scrape ulang kalau sudah dihapus."}
+            {transient
+              ? "Coba muat ulang sebentar lagi."
+              : signedOut
+                ? "Masuk dengan Google dulu untuk melihat hasil scrape ini."
+                : "Detail HTML ini cuma tersimpan di akun Google kamu. Scrape ulang kalau sudah dihapus."}
           </p>
           <Link
             to="/history"

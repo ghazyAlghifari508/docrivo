@@ -16,6 +16,19 @@ const TERMINAL_STATUSES = new Set(["completed", "failed", "cancelled"])
 /** The interval the hand-rolled loop in `generation-result.tsx` already used. */
 const POLL_MS = 2500
 
+/**
+ * Whether this status is one the job will not leave.
+ *
+ * Exported because the progress view needs the same answer the poll does -- it
+ * decides between "in progress" and "here is what happened" -- and a second
+ * literal list in the component is a second thing to forget. `undefined` and an
+ * unrecognised status both answer `false`, so a caller that passes nothing is
+ * told the job is still running rather than the reverse.
+ */
+export function isTerminalJobStatus(status: string | undefined): boolean {
+  return status !== undefined && TERMINAL_STATUSES.has(status)
+}
+
 /** The default retry budget, kept explicit so the not-found exemption is visible. */
 const RETRY_BUDGET = 3
 
@@ -38,13 +51,11 @@ export function jobQueryOptions(jobId: string) {
   return queryOptions({
     queryKey: ["job", jobId],
     queryFn: () => getOwnedJob({ data: { jobId } }),
-    refetchInterval: (query) => {
-      const status = query.state.data?.status
+    refetchInterval: (query) =>
       // `undefined` means the first response has not landed, and an unrecognised
       // status means a row written by a newer version. Both keep polling: the
       // only thing that should stop a progress bar is proof that the job ended.
-      return status !== undefined && TERMINAL_STATUSES.has(status) ? false : POLL_MS
-    },
+      isTerminalJobStatus(query.state.data?.status) ? false : POLL_MS,
     // A not-found here is the ownership answer, and it is final -- `getOwnedJob`
     // raises it for a job owned by somebody else and for one that does not exist
     // alike. Retrying it is three more round trips to reach the same answer.
