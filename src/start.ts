@@ -1,6 +1,6 @@
 import { createMiddleware, createStart } from "@tanstack/react-start"
 import { authMiddleware } from "~/auth/middleware"
-import { GLOBAL_SECURITY_HEADERS, withSecurityHeaders } from "~/security-headers"
+import { securityHeadersFor, withSecurityHeaders } from "~/security-headers"
 
 /**
  * The `type: "request"` counterpart to `authMiddleware`.
@@ -10,11 +10,18 @@ import { GLOBAL_SECURITY_HEADERS, withSecurityHeaders } from "~/security-headers
  * result object with no response on it. Request middleware runs for page
  * requests and server-function calls alike, which is the coverage
  * `next.config.ts` `headers()` gave.
+ *
+ * The header set is chosen by path, not applied flat. `/api/scrape/preview`
+ * sandboxes scraped third-party HTML and needs the stricter policy from
+ * `next.config.ts` rule 2; everything else gets rule 1. Applying rule 1 to the
+ * preview as well would overwrite the sandbox directive on the way out, and
+ * applying rule 2 globally would break hydration on every page.
  */
 const securityHeadersMiddleware = createMiddleware({ type: "request" }).server(
-  async ({ next }) => {
+  async ({ next, request }) => {
     const result = await next()
-    return withSecurityHeaders(result.response, GLOBAL_SECURITY_HEADERS)
+    const { pathname } = new URL(request.url)
+    return withSecurityHeaders(result.response, securityHeadersFor(pathname))
   },
 )
 

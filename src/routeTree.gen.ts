@@ -23,7 +23,10 @@ import { Route as SettingRouteImport } from './routes/setting'
 import { Route as TemplateRouteImport } from './routes/template'
 import { Route as TentangRouteImport } from './routes/tentang'
 import { Route as GenerationsIdRouteImport } from './routes/generations.$id'
+import { Route as ApiScrapeAssetRouteImport } from './routes/api/scrape.asset'
+import { Route as ApiScrapePreviewRouteImport } from './routes/api/scrape.preview'
 import { Route as HistoryScrapesIdRouteImport } from './routes/history_.scrapes.$id'
+import { Route as ApiGenerationsIdDownloadRouteImport } from './routes/api/generations.$id.download'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -95,11 +98,27 @@ const GenerationsIdRoute = GenerationsIdRouteImport.update({
   path: '/generations/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiScrapeAssetRoute = ApiScrapeAssetRouteImport.update({
+  id: '/api/scrape/asset',
+  path: '/api/scrape/asset',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiScrapePreviewRoute = ApiScrapePreviewRouteImport.update({
+  id: '/api/scrape/preview',
+  path: '/api/scrape/preview',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const HistoryScrapesIdRoute = HistoryScrapesIdRouteImport.update({
   id: '/history_/scrapes/$id',
   path: '/history/scrapes/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiGenerationsIdDownloadRoute =
+  ApiGenerationsIdDownloadRouteImport.update({
+    id: '/api/generations/$id/download',
+    path: '/api/generations/$id/download',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -116,7 +135,10 @@ export interface FileRoutesByFullPath {
   '/template': typeof TemplateRoute
   '/tentang': typeof TentangRoute
   '/generations/$id': typeof GenerationsIdRoute
+  '/api/scrape/asset': typeof ApiScrapeAssetRoute
+  '/api/scrape/preview': typeof ApiScrapePreviewRoute
   '/history/scrapes/$id': typeof HistoryScrapesIdRoute
+  '/api/generations/$id/download': typeof ApiGenerationsIdDownloadRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -133,7 +155,10 @@ export interface FileRoutesByTo {
   '/template': typeof TemplateRoute
   '/tentang': typeof TentangRoute
   '/generations/$id': typeof GenerationsIdRoute
+  '/api/scrape/asset': typeof ApiScrapeAssetRoute
+  '/api/scrape/preview': typeof ApiScrapePreviewRoute
   '/history/scrapes/$id': typeof HistoryScrapesIdRoute
+  '/api/generations/$id/download': typeof ApiGenerationsIdDownloadRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -151,7 +176,10 @@ export interface FileRoutesById {
   '/template': typeof TemplateRoute
   '/tentang': typeof TentangRoute
   '/generations/$id': typeof GenerationsIdRoute
+  '/api/scrape/asset': typeof ApiScrapeAssetRoute
+  '/api/scrape/preview': typeof ApiScrapePreviewRoute
   '/history_/scrapes/$id': typeof HistoryScrapesIdRoute
+  '/api/generations/$id/download': typeof ApiGenerationsIdDownloadRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -170,7 +198,10 @@ export interface FileRouteTypes {
     | '/template'
     | '/tentang'
     | '/generations/$id'
+    | '/api/scrape/asset'
+    | '/api/scrape/preview'
     | '/history/scrapes/$id'
+    | '/api/generations/$id/download'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -187,7 +218,10 @@ export interface FileRouteTypes {
     | '/template'
     | '/tentang'
     | '/generations/$id'
+    | '/api/scrape/asset'
+    | '/api/scrape/preview'
     | '/history/scrapes/$id'
+    | '/api/generations/$id/download'
   id:
     | '__root__'
     | '/'
@@ -204,7 +238,10 @@ export interface FileRouteTypes {
     | '/template'
     | '/tentang'
     | '/generations/$id'
+    | '/api/scrape/asset'
+    | '/api/scrape/preview'
     | '/history_/scrapes/$id'
+    | '/api/generations/$id/download'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -222,7 +259,10 @@ export interface RootRouteChildren {
   TemplateRoute: typeof TemplateRoute
   TentangRoute: typeof TentangRoute
   GenerationsIdRoute: typeof GenerationsIdRoute
+  ApiScrapeAssetRoute: typeof ApiScrapeAssetRoute
+  ApiScrapePreviewRoute: typeof ApiScrapePreviewRoute
   HistoryScrapesIdRoute: typeof HistoryScrapesIdRoute
+  ApiGenerationsIdDownloadRoute: typeof ApiGenerationsIdDownloadRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -325,11 +365,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof GenerationsIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/scrape/asset': {
+      id: '/api/scrape/asset'
+      path: '/api/scrape/asset'
+      fullPath: '/api/scrape/asset'
+      preLoaderRoute: typeof ApiScrapeAssetRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/scrape/preview': {
+      id: '/api/scrape/preview'
+      path: '/api/scrape/preview'
+      fullPath: '/api/scrape/preview'
+      preLoaderRoute: typeof ApiScrapePreviewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/history_/scrapes/$id': {
       id: '/history_/scrapes/$id'
       path: '/history/scrapes/$id'
       fullPath: '/history/scrapes/$id'
       preLoaderRoute: typeof HistoryScrapesIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/generations/$id/download': {
+      id: '/api/generations/$id/download'
+      path: '/api/generations/$id/download'
+      fullPath: '/api/generations/$id/download'
+      preLoaderRoute: typeof ApiGenerationsIdDownloadRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -350,7 +411,10 @@ const rootRouteChildren: RootRouteChildren = {
   TemplateRoute: TemplateRoute,
   TentangRoute: TentangRoute,
   GenerationsIdRoute: GenerationsIdRoute,
+  ApiScrapeAssetRoute: ApiScrapeAssetRoute,
+  ApiScrapePreviewRoute: ApiScrapePreviewRoute,
   HistoryScrapesIdRoute: HistoryScrapesIdRoute,
+  ApiGenerationsIdDownloadRoute: ApiGenerationsIdDownloadRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

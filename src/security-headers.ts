@@ -47,6 +47,28 @@ export const PREVIEW_SECURITY_HEADERS: ReadonlyArray<readonly [string, string]> 
 export const PREVIEW_ROUTE_PATH = "/api/scrape/preview"
 
 /**
+ * Which header set a given response gets.
+ *
+ * Rule 2 has to win on the preview path, and it cannot be left to whichever
+ * handler happens to set its own headers: the global set is applied by a
+ * request middleware on the way out, and a `Headers.set` there would overwrite
+ * whatever the handler chose. Selecting by path before the copy is what makes
+ * the stricter policy actually reach the response.
+ *
+ * The match is on the pathname with the query string already stripped, so
+ * `/api/scrape/preview?url=https://example.com` is recognised. A prefix match
+ * would also cover `/api/scrape/preview-evil`, which is not this route, so the
+ * comparison is exact.
+ */
+export function securityHeadersFor(
+  pathname: string,
+): ReadonlyArray<readonly [string, string]> {
+  return pathname === PREVIEW_ROUTE_PATH
+    ? PREVIEW_SECURITY_HEADERS
+    : GLOBAL_SECURITY_HEADERS
+}
+
+/**
  * Copies `headers` onto `response`.
  *
  * The response is rebuilt rather than mutated in place: a `Response` that
