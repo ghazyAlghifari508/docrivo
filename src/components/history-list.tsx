@@ -1,8 +1,10 @@
 "use client";
 
-import { Link, useRouter } from "@tanstack/react-router";
+import { Link, isNotFound, useRouter } from "@tanstack/react-router";
 import { useState, useCallback, useEffect, useRef, type KeyboardEvent } from "react";
 import { ArrowRight, Code, FileMd, GlobeHemisphereWest, Trash, Warning } from "@phosphor-icons/react";
+import { deleteJob } from "~/queries/jobs";
+import { deleteScrape } from "~/queries/scrapes";
 
 type GenerationItem = { id: string; url: string; status: string; at: number };
 type ScrapeItem = { id: string; url: string; at: number };
@@ -32,6 +34,7 @@ export function HistoryList({ generations, scrapes }: { generations: GenerationI
   const router = useRouter();
   const [confirmDelete, setConfirmDelete] = useState<{ id: string; kind: "scrape" | "generate" } | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
+  const [notice, setNotice] = useState("");
   const [items, setItems] = useState<{ generations: GenerationItem[]; scrapes: ScrapeItem[] }>({
     generations,
     scrapes,
@@ -41,34 +44,48 @@ export function HistoryList({ generations, scrapes }: { generations: GenerationI
 
   const handleDelete = useCallback(async () => {
     if (!confirmDelete) return;
-    // TODO(Task 4.1 / 4.2): replace these DELETEs with the `deleteJob` and
-    // `deleteScrape` server functions. Both `/api/generations/:id` and
-    // `/api/scrapes/:id` were deleted in Task 3.1 and are not being re-created.
-    const path = confirmDelete.kind === "scrape" ? `/api/scrapes/${confirmDelete.id}` : `/api/generations/${confirmDelete.id}`;
-    const res = await fetch(path, { method: "DELETE" });
-    if (res.ok) {
+    const { id, kind } = confirmDelete;
+    try {
+      // Both server functions derive the user from the session and raise the
+      // router's not-found payload for a row owned by somebody else, so a
+      // cross-user id is indistinguishable from one that does not exist.
+      await (kind === "scrape"
+        ? deleteScrape({ data: { scrapeId: id } })
+        : deleteJob({ data: { jobId: id } }));
       setItems((prev) => ({
-        generations: prev.generations.filter((g) => !(confirmDelete.kind === "generate" && g.id === confirmDelete.id)),
-        scrapes: prev.scrapes.filter((s) => !(confirmDelete.kind === "scrape" && s.id === confirmDelete.id)),
+        generations: prev.generations.filter((g) => !(kind === "generate" && g.id === id)),
+        scrapes: prev.scrapes.filter((s) => !(kind === "scrape" && s.id === id)),
       }));
       // Re-run the route's loader so /history re-reads from the server, the way
       // `router.refresh()` did under Next. `invalidate()` is the equivalent: it
       // marks the current matches stale and reloads them in place, which keeps
       // the client state this component holds.
-      void router.invalidate()
+      void router.invalidate();
+    } catch (error) {
+      // A not-found here means the row was already gone or is not the caller's.
+      // The list is not reloaded, so the stale row stays visible rather than
+      // silently disappearing -- the user is told instead.
+      if (!isNotFound(error)) {
+        setNotice("Gagal menghapus riwayat. Coba lagi.");
+      }
     }
     setConfirmDelete(null);
   }, [confirmDelete, router]);
 
   const handleClear = useCallback(async () => {
-    const results = await Promise.allSettled([
-      ...items.generations.map((g) => fetch(`/api/generations/${g.id}`, { method: "DELETE" })),
-      ...items.scrapes.map((s) => fetch(`/api/scrapes/${s.id}`, { method: "DELETE" })),
-    ]);
-    const ok = results.every((r) => r.status === "fulfilled" && r.value.ok);
+    const targets = [
+      ...items.generations.map((g) => () => deleteJob({ data: { jobId: g.id } })),
+      ...items.scrapes.map((s) => () => deleteScrape({ data: { scrapeId: s.id } })),
+    ];
+    // `allSettled`, not `all`: one row that is already gone, or belongs to
+    // somebody else, must not abandon the rest of the batch half-deleted.
+    const results = await Promise.allSettled(targets.map((run) => run()));
+    const ok = results.every((r) => r.status === "fulfilled");
     if (ok) {
       setItems({ generations: [], scrapes: [] });
       void router.invalidate();
+    } else {
+      setNotice("Sebagian riwayat gagal dihapus. Coba lagi.");
     }
     setConfirmClear(false);
   }, [items, router]);
@@ -101,6 +118,13 @@ export function HistoryList({ generations, scrapes }: { generations: GenerationI
           <Trash size={14} /> Hapus semua
         </button>
       </div>
+
+      {notice ? (
+        <p role="alert" className="mb-4 inline-flex items-center gap-2 rounded-buttons border border-red-300 bg-red-50 px-3 py-2 text-caption font-medium text-red-700">
+          <Warning size={15} weight="fill" aria-hidden="true" />
+          {notice}
+        </p>
+      ) : null}
 
       <ul className="space-y-3">
         {items.generations.map((it) => (

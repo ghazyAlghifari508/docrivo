@@ -1,8 +1,9 @@
 "use client";
 
-import { Link } from "@tanstack/react-router";
+import { Link, isNotFound } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, CircleNotch, Code, DownloadSimple, GlobeHemisphereWest, Warning } from "@phosphor-icons/react";
+import { getScrape } from "~/queries/scrapes";
 
 type ScrapeResult = {
   id: string;
@@ -18,36 +19,44 @@ type ScrapeResult = {
     htmlBytes: number;
     previewHtmlBytes: number;
   };
-  createdAt: string;
+  createdAt: string | Date;
 };
 
 type ResultView = "preview" | "code";
 
 export function ScrapeDetail({ id }: { id: string }) {
   const [item, setItem] = useState<ScrapeResult | null | undefined>(undefined);
+  const [error, setError] = useState("");
   const [view, setView] = useState<ResultView>("preview");
   const [blobUrl, setBlobUrl] = useState("");
   const blobRef = useRef("");
 
   useEffect(() => {
     let alive = true;
-    // TODO(Task 4.2): replace this GET with the `getScrape` server function.
-    // `/api/scrapes/:id` was deleted in Task 3.1 and is not being re-created.
-    // `void` marks the chain as intentionally unhandled; the `alive` flag is
-    // what stops a late `setState` after unmount.
-    void fetch(`/api/scrapes/${id}`)
-      .then((res) => (res.ok ? res.json() : null))
-      .then((artifact) => {
+    const run = async () => {
+      try {
+        // The ownership check lives in the server function, which raises the
+        // router's not-found payload for an artifact owned by somebody else and
+        // for an id that does not exist alike.
+        const artifact = await getScrape({ data: { scrapeId: id } });
         if (!alive) return;
-        if (!artifact) {
-          setItem(null);
-          return;
-        }
         setItem(artifact);
         const url = URL.createObjectURL(new Blob([artifact.html], { type: "text/html" }));
         blobRef.current = url;
         setBlobUrl(url);
-      });
+      } catch (error) {
+        if (!alive) return;
+        // A signed-out visitor gets a 401 from the server function, which is a
+        // different condition from "this artifact is not yours" and should not
+        // be reported as a missing scrape.
+        if (error instanceof Response || isNotFound(error)) {
+          setItem(null);
+          return;
+        }
+        setError("Gagal memuat hasil scrape. Coba muat ulang.");
+      }
+    };
+    void run();
     return () => {
       alive = false;
       if (blobRef.current) URL.revokeObjectURL(blobRef.current);
@@ -74,7 +83,7 @@ export function ScrapeDetail({ id }: { id: string }) {
           </span>
           <h1 className="mt-6 text-heading-sm font-semibold tracking-heading-sm">Hasil scrape tidak ditemukan.</h1>
           <p className="mt-3 text-body-sm leading-7 text-muted">
-            Detail HTML ini cuma tersimpan di akun Google kamu. Scrape ulang kalau sudah dihapus.
+            {error || "Detail HTML ini cuma tersimpan di akun Google kamu. Scrape ulang kalau sudah dihapus."}
           </p>
           <Link
             to="/history"

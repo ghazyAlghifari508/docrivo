@@ -4,7 +4,10 @@ export const Route = createFileRoute("/history")({
   // called `requireUser()` in `src/lib/dal` (removed in Task 3.1), which
   // redirected to /login before the list was ever built. Task 7.3 adds the root
   // loader; that is where the `beforeLoad` guard belongs. Until then this route
-  // renders an empty list for anyone.
+  // renders an empty list for anyone, which is what `loadHistory` below
+  // preserves: it treats an unauthenticated caller as "no rows" rather than
+  // turning the page into an error.
+  loader: loadHistory,
   head: () => ({
     meta: [
       { title: "History - Docrivo" },
@@ -17,18 +20,35 @@ export const Route = createFileRoute("/history")({
 import { SiteHeader } from "~/components/site-header";
 import { SiteFooter } from "~/components/site-footer";
 import { HistoryList } from "~/components/history-list";
+import { listJobs } from "~/queries/jobs";
+import { listScrapes } from "~/queries/scrapes";
 
-// TODO(Task 4.1 / 4.2): these replace `getGenerationHistory()` and
-// `getScrapeHistory()` from `src/lib/dal`, which were InsForge queries deleted
-// in Task 3.1. Task 4.1 owns `listJobs`, Task 4.2 owns `listScrapes`, and both
-// are user-scoped on the server so no client-supplied `userId` is needed.
-type GenerationHistoryRow = { id: string; source_url: string; status: string; created_at: string };
-type ScrapeHistoryRow = { id: string; source_url: string; created_at: string };
-const generations: GenerationHistoryRow[] = [];
-const scrapes: ScrapeHistoryRow[] = [];
-
+/**
+ * Both lists are read server-side and user-scoped, so no `userId` crosses the
+ * wire and a caller cannot ask for somebody else's history by editing a
+ * parameter. `listJobs` / `listScrapes` resolve the session themselves.
+ */
+async function loadHistory() {
+  try {
+    const [generations, scrapes] = await Promise.all([
+      listJobs({ data: {} }),
+      listScrapes({ data: {} }),
+    ])
+    return { generations, scrapes }
+  } catch (error) {
+    // A 401 is the documented state for a signed-out visitor until Task 7.3
+    // adds the guard. Anything else is a real failure and belongs in the route's
+    // error boundary rather than being flattened into an empty list.
+    if (error instanceof Response && error.status === 401) {
+      return { generations: [], scrapes: [] }
+    }
+    throw error
+  }
+}
 
 export function HistoryPage() {
+  const { generations, scrapes } = Route.useLoaderData()
+
   return (
     <>
       <SiteHeader />
@@ -46,14 +66,14 @@ export function HistoryPage() {
           <HistoryList
             generations={generations.map((g) => ({
               id: g.id,
-              url: g.source_url,
+              url: g.sourceUrl,
               status: g.status,
-              at: new Date(g.created_at).getTime(),
+              at: new Date(g.createdAt).getTime(),
             }))}
             scrapes={scrapes.map((s) => ({
               id: s.id,
-              url: s.source_url,
-              at: new Date(s.created_at).getTime(),
+              url: s.sourceUrl,
+              at: new Date(s.createdAt).getTime(),
             }))}
           />
         </div>

@@ -15,12 +15,22 @@ const MEMBER = "admin@example.com"
 const SECOND_MEMBER = "ops@example.com"
 const OUTSIDER = "nobody@example.net"
 
+/**
+ * The first test in this file pays for the whole `./middleware -> ./server ->
+ * ~/db` module graph, which reads `.env.local` and opens a connection pool. That
+ * lands within a few hundred milliseconds of vitest's 5s default, so the first
+ * `resolveSession` call intermittently timed out once other database-backed
+ * suites were added to the run. The timeout is explicit on the three tests that
+ * trigger that import, not raised globally, so a real hang still fails.
+ */
+const MODULE_GRAPH_TIMEOUT = 20_000
+
 describe("session middleware", () => {
   it("exposes a session resolver that rejects an unauthenticated request", async () => {
     const { resolveSession } = await import("./middleware")
     const session = await resolveSession(new Headers())
     expect(session).toBeNull()
-  })
+  }, MODULE_GRAPH_TIMEOUT)
 
   it("resolves an unauthenticated request to null rather than throwing", async () => {
     const { resolveSession } = await import("./middleware")
@@ -28,13 +38,13 @@ describe("session middleware", () => {
     // would be indistinguishable at the call site from a database outage, which
     // is why the middleware must not branch on a thrown error.
     await expect(resolveSession(new Headers())).resolves.toBeNull()
-  })
+  }, MODULE_GRAPH_TIMEOUT)
 
   it("resolves to null for a request carrying no session cookie", async () => {
     const { resolveSession } = await import("./middleware")
     const headers = new Headers({ cookie: "docrivo_session=not-a-real-token" })
     await expect(resolveSession(headers)).resolves.toBeNull()
-  })
+  }, MODULE_GRAPH_TIMEOUT)
 
   it("exports a server-function middleware", async () => {
     const { authMiddleware } = await import("./middleware")

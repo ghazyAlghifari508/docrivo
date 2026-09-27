@@ -4,6 +4,7 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { ArrowRight, GlobeHemisphereWest, Warning } from "@phosphor-icons/react";
 import { useState, type FormEvent } from "react";
 import { setActiveScrapeId } from "~/lib/history";
+import { createScrape } from "~/queries/scrapes";
 
 export function HtmlScraper({
   guest = false,
@@ -30,38 +31,31 @@ export function HtmlScraper({
     setLoading(true);
     setError("");
     try {
-      // TODO(Task 4.2): replace this POST with the `createScrape` server
-      // function. The `/api/scrape` handler was deleted in Task 3.1 and is not
-      // being re-created -- Task 4.2 owns the equivalent server function.
-      const res = await fetch("/api/scrape", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: url.trim() }),
-      });
-      const json = (await res.json().catch(() => ({}))) as {
-        scrapeId?: string;
-        error?: { code?: string; message?: string };
-      };
-      if (res.status === 402) {
-        onQuotaExceeded?.();
-        return;
-      }
-      if (!res.ok) {
+      // The server function resolves the user from the session, so there is no
+      // `userId` in the payload to forge, and it answers with a discriminated
+      // result so each failure keeps its own message.
+      const result = await createScrape({ data: { url: url.trim() } });
+
+      if (!result.ok) {
+        if (result.error.code === "QUOTA_EXCEEDED") {
+          onQuotaExceeded?.();
+          return;
+        }
+        if (result.error.code === "UNAUTHORIZED") {
+          void navigate({ to: "/login" });
+          return;
+        }
         // Surface the server's real reason. Only fall back to the URL-is-public
         // hint when the server gave nothing useful — that hint is misleading
         // for transient backend errors (502/503/PGRST002).
-        const fromServer = json.error?.message?.trim();
+        const fromServer = result.error.message?.trim();
         setError(fromServer || "Gagal mengambil HTML. Coba lagi sebentar lagi.");
         return;
       }
-      const scrapeId = json.scrapeId;
-      if (!scrapeId) {
-        setError("Gagal menyimpan hasil scrape.");
-        return;
-      }
+
       onConsumed?.();
-      setActiveScrapeId(scrapeId);
-      void navigate({ to: "/history/scrapes/$id", params: { id: scrapeId } });
+      setActiveScrapeId(result.scrapeId);
+      void navigate({ to: "/history/scrapes/$id", params: { id: result.scrapeId } });
     } catch {
       setError("Jaringan bermasalah. Coba lagi sebentar lagi.");
     } finally {
