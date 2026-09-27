@@ -2,11 +2,12 @@ import OpenAI from "openai";
 import { AppError } from "./errors";
 import type { DesignExtraction } from "./types";
 
-// NVIDIA NIM (OpenAI-compatible). Swap provider = change baseURL+model env.
+// OpenAI-compatible provider (NVIDIA NIM, 9Router, OpenRouter, etc.).
 function client() {
+  const apiKey = process.env.AI_API_KEY || process.env.NVIDIA_API_KEY || "";
   return new OpenAI({
-    apiKey: process.env.NVIDIA_API_KEY!,
-    baseURL: "https://integrate.api.nvidia.com/v1",
+    apiKey,
+    baseURL: process.env.AI_BASE_URL || "https://integrate.api.nvidia.com/v1",
     timeout: 180_000, // hangs → fail fast, fall through to next
     maxRetries: 2,
   });
@@ -249,11 +250,11 @@ function countPrompts(text: string) {
 }
 
 async function complete(user: string): Promise<string> {
-  // Fallbacks are all real NIM models (with enough capacity for 12K+ char DESIGN.md).
+  // Fallbacks: configured model first, followed by default and secondary fallbacks.
   // ponytail: 8B removed — always truncated at 10K+ tokens, wasted retry cycle.
   const models = [
-    DEFAULT_MODEL,
     process.env.AI_MODEL,
+    DEFAULT_MODEL,
     "meta/llama-3.1-70b-instruct",
   ].filter((model, index, all): model is string => Boolean(model) && all.indexOf(model) === index);
 
@@ -268,6 +269,7 @@ async function complete(user: string): Promise<string> {
         ],
         temperature: 0.25,
         max_tokens: 16_384, // 12K+ char DESIGN.md needs room
+        stream: false,
       });
       const choice = res.choices[0];
       if (choice?.finish_reason === "length") throw new Error(`AI output truncated (model=${model})`);
