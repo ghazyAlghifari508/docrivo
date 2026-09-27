@@ -160,6 +160,7 @@ None of them are exposed to the browser.
 | `npm run build` | production build (`vite build` → `dist/client`, `dist/server`) |
 | `npm start` | serve the built output (`scripts/serve.mjs`) |
 | `npm test` | Vitest |
+| `npm run reconcile:import` | Checks the local database against the production row counts and reference integrity. Exits non-zero on mismatch. |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run lint` | ESLint across the whole project |
 
@@ -243,6 +244,53 @@ function, which is not a public API.
 - **No row-level security.** Ownership is enforced in the application layer, and
   that layer has tests. The database connection is a single non-superuser role,
   which is the only thing standing between a query bug and a data leak.
+
+## Known differences from the InsForge era
+
+The local `docrivo` database was loaded with the production data during the
+cutover. `docs/migration/data-import-reconciliation.md` records what was imported
+and how it was verified; `npm run reconcile:import` re-checks it.
+
+**Passwords did not migrate, and there is nothing to migrate to.** The pre-migration
+`auth.users.password` column held a 2-character non-bcrypt placeholder, identical
+for both accounts, so no working password existed on InsForge either. The new stack
+sets `emailAndPassword.enabled = false` (`src/auth/server.ts:20`), so it has no
+password sign-in path at all. Google was the only provider before the migration and
+is the only provider after it. Both pre-migration accounts must authenticate through
+Google — they were already Google-only accounts, so this removes a credential that
+was never usable rather than removing access.
+
+**User ids are preserved, so history stays attached.** Both production ids were
+already well-formed UUIDs and `users.id` is `uuid`, so the original ids were kept
+and every job, scrape, entitlement and payment record still points at its owner.
+This depends on the imported `users.email_verified` being `true`: Better Auth's
+`accountLinking.requireLocalEmailVerified` defaults to `true`, so a Google sign-in
+matching an existing email is only linked implicitly when the local row is
+email-verified. Had the flag imported as `false`, the first sign-in would have been
+rejected, a new id issued, and that account's history orphaned. If you ever import
+these users into a fresh database, keep that flag.
+
+**Two details will not refresh themselves.** `name` was synthesised from the email
+local part and `image` is null, because the InsForge `profile` column was not
+mapped. Better Auth's `accountLinking.updateUserInfoOnLink` defaults to `false`, so
+Google sign-in will not backfill either. Display names and avatars stay as imported
+until set explicitly.
+
+**Some rows have no owner, and that predates the migration.** 44 of the 50
+`generation_jobs` and most of their `crawled_pages` and `extracted_assets` have a
+null `user_id`, because they were created before the app required sign-in. They are
+preserved as-is. Ownership checks scope by `user_id`, so an ownerless row is
+invisible to every signed-in user, which is the same answer it got before.
+
+**The Google OAuth redirect URI changed.** InsForge owned the callback; the new
+stack serves it at `/api/auth/callback/google`. The Google Cloud Console entry has
+to match the new value or sign-in fails at the consent step.
+
+**InsForge platform data was not carried over.** Audit logs, MCP usage telemetry,
+scheduler history, deployment artifacts, email templates, encrypted platform
+secrets and the container service record have no counterpart table. The
+`payments.*` tables in the dump were empty — the app used Midtrans, whose records
+live in `payment_transactions`, and those 3 rows were imported.
 
 ## Internationalization
 

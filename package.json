@@ -11,6 +11,7 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "reconcile:import": "node scripts/reconcile-import.mjs",
     "worker": "tsx watch worker/index.ts"
   },
   "dependencies": {
