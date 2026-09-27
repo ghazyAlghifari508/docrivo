@@ -5,6 +5,8 @@ export const Route = createFileRoute("/setting")({
   // the root loader that resolves the session once per request; that is where
   // the `beforeLoad` guard belongs. Until then `loadSetting` resolves the
   // identity itself and the page renders its signed-out state.
+  errorComponent: RouteError,
+  notFoundComponent: RouteNotFound,
   loader: loadSetting,
   head: () => ({
     meta: [
@@ -22,6 +24,7 @@ import { CreditBadge } from "~/components/credit-badge";
 import { SiteHeader } from "~/components/site-header";
 import { SiteFooter } from "~/components/site-footer";
 import { signOut } from "~/auth/client";
+import { RouteError, RouteNotFound } from "~/components/route-error";
 import { listJobs } from "~/queries/jobs";
 import { listScrapes } from "~/queries/scrapes";
 import { getEntitlement } from "~/queries/entitlements";

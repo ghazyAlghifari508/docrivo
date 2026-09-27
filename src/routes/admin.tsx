@@ -9,6 +9,7 @@ export const Route = createFileRoute("/admin")({
   // Task 7.3 adds the root loader that resolves the session once per request.
   // Until then the gate lives in the server function, which is the only place
   // that can reach the session without a client-environment import.
+  notFoundComponent: RouteNotFound,
   loader: loadAdmin,
   head: () => ({
     meta: [
@@ -24,7 +25,16 @@ export const Route = createFileRoute("/admin")({
 
 import { SiteHeader } from "~/components/site-header";
 import { SiteFooter } from "~/components/site-footer";
+import { RouteNotFound } from "~/components/route-error";
 import { listRecentJobs } from "~/queries/jobs";
+
+/**
+ * The not-found boundary is named explicitly and the error one is not, because
+ * `requireAdmin` raises `notFound()` and that is the only failure this route is
+ * supposed to have: a signed-out visitor and a non-allowlisted address both get
+ * a 404, never a 403. A genuine fault -- the database being down -- still falls
+ * through to the root route's error boundary, which is the right place for it.
+ */
 
 /**
  * The 30 most recent jobs across every user -- the unscoped read the deleted

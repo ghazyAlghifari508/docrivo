@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { HeadContent, createRootRoute, Scripts } from "@tanstack/react-router"
 import { useState, type ReactNode } from "react"
+import { RouteError, RouteNotFound } from "~/components/route-error"
 import globalCss from "~/styles/globals.css?url"
 
 export const Route = createRootRoute({
@@ -12,6 +13,13 @@ export const Route = createRootRoute({
     ],
     links: [{ rel: "stylesheet", href: globalCss }],
   }),
+  // On the root rather than per route, so it covers the case the six per-route
+  // boundaries cannot: a URL that matches no route at all. Every route inherits
+  // these two unless it declares its own, which is why the individual routes
+  // name them explicitly -- a route that opts out silently would be a decision
+  // nobody made.
+  errorComponent: RouteError,
+  notFoundComponent: RouteNotFound,
   // `shellComponent`, not `component`: the shell renders `<html>` and
   // `<body>`, which must sit outside the router's own outlet.
   shellComponent: RootDocument,

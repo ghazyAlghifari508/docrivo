@@ -6,6 +6,11 @@ export const Route = createFileRoute("/pricing")({
     const order_id = typeof search.order_id === "string" ? search.order_id : undefined
     return order_id === undefined ? {} : { order_id }
   },
+  // Named specifically because this route's loader reads a Midtrans `order_id`
+  // out of the query string and a Midtrans lookup can fail. `loadPricing` catches
+  // its own reads, so what reaches here is a genuine fault.
+  errorComponent: RouteError,
+  notFoundComponent: RouteNotFound,
   loader: loadPricing,
   head: () => ({
     meta: [
@@ -20,6 +25,7 @@ import { SiteHeader } from "~/components/site-header";
 import { SiteFooter } from "~/components/site-footer";
 import { PricingCards } from "~/components/pricing-cards";
 import { PaymentVerifier } from "~/components/payment-verifier";
+import { RouteError, RouteNotFound } from "~/components/route-error";
 import { listPlans } from "~/queries/plans";
 import { getProfile } from "~/queries/profile";
 

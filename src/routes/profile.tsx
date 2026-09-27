@@ -17,6 +17,8 @@ export const Route = createFileRoute("/profile")({
       ...(error === undefined ? {} : { error }),
     }
   },
+  errorComponent: RouteError,
+  notFoundComponent: RouteNotFound,
   loader: loadProfile,
   head: () => ({
     meta: [
@@ -33,6 +35,7 @@ import { ArrowRight, CheckCircle, GearSix, SignOut, UserCircle, Warning } from "
 import { SiteHeader } from "~/components/site-header";
 import { SiteFooter } from "~/components/site-footer";
 import { signOut } from "~/auth/client";
+import { RouteError, RouteNotFound } from "~/components/route-error";
 import { getProfile, updateProfile } from "~/queries/profile";
 
 /**

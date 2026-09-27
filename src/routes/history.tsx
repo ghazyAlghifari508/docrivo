@@ -8,6 +8,10 @@ export const Route = createFileRoute("/history")({
   // preserves: it treats an unauthenticated caller as "no rows" rather than
   // turning the page into an error.
   loader: loadHistory,
+  // `loadHistory` re-throws anything that is not a 401, so a database timeout
+  // reaches this boundary instead of being flattened into an empty list.
+  errorComponent: RouteError,
+  notFoundComponent: RouteNotFound,
   head: () => ({
     meta: [
       { title: "History - Docrivo" },
@@ -20,6 +24,7 @@ export const Route = createFileRoute("/history")({
 import { SiteHeader } from "~/components/site-header";
 import { SiteFooter } from "~/components/site-footer";
 import { HistoryList } from "~/components/history-list";
+import { RouteError, RouteNotFound } from "~/components/route-error";
 import { listJobs } from "~/queries/jobs";
 import { listScrapes } from "~/queries/scrapes";
 
